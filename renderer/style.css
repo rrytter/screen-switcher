@@ -63,6 +63,8 @@ input.alias { width: 170px; padding: 5px 8px; }
 
 .shortcut { min-width: 220px; padding: 9px 14px; border-radius: 8px; border: 1px dashed var(--muted); background: #0e1117; color: var(--text); font-family: "Cascadia Mono", Consolas, monospace; cursor: pointer; }
 .shortcut.capturing { border-color: var(--accent); border-style: solid; color: var(--accent); }
+.code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--muted); background: #0e1117; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+.launch { font-size: 13px; }
 #shortcut-status.ok { color: var(--ok); }
 #shortcut-status.bad { color: var(--bad); }
 

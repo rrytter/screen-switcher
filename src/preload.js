@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('api', {
   save: (patch) => ipcRenderer.invoke('save', patch),
   autostart: (on) => ipcRenderer.invoke('autostart', on),
   capture: (on) => ipcRenderer.invoke('capture', on),
+  sceneCommand: (name) => ipcRenderer.invoke('scene-command', name),
+  copy: (text) => ipcRenderer.invoke('copy', text),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
   onHardware: (cb) => ipcRenderer.on('hardware', (_e, h) => cb(h)),
 });

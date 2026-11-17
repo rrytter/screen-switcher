@@ -32,6 +32,8 @@ Les logs utiles sont sur stdout : `[shortcuts] …` (état des raccourcis au dé
 | `native/Native.cs` | interop Windows : API CCD (`QueryDisplayConfig`/`SetDisplayConfig`), audio (`IPolicyConfig`, COM non documenté), DDC/CI (`dxva2`) |
 | `renderer/` | éditeur de scènes (HTML/CSS/JS vanilla, pas de framework ni de bundler) |
 
+Déclencheurs d'une scène : raccourci global, menu du tray, double-clic dans la liste, argument `--scene "<nom>"` ou lien `screenswitcher://scene/<nom>` (protocole enregistré au démarrage ; instance unique → `second-instance` transmet l'argv à l'app déjà lancée). Recherche par id puis par nom normalisé (casse/accents).
+
 Ordre d'application d'une scène (dans `helper.ps1`) : **activer écrans → écran principal → désactiver écrans → audio → sources DDC**. L'audio HDMI d'un écran qui vient d'être activé met ~1–2 s à apparaître : le helper attend.
 
 Config utilisateur : `%APPDATA%\screen-switcher\config.json` (scènes, noms d'écrans, `lastInputs`, `displayModes`, `devicePaths`). Ne pas la versionner.

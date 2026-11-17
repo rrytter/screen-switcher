@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, Notification, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, Notification, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFileSync } = require('child_process');
@@ -265,15 +265,59 @@ function migrateAutostart() {
 // pendant la capture d'un raccourci, on désactive les raccourcis globaux
 ipcMain.handle('capture', (_e, on) => { on ? globalShortcut.unregisterAll() : registerShortcuts(); return publicState(); });
 
+// ---------------------------------------------------------------- lancement d'une scène de l'extérieur
+// Deux formes, pour le Stream Deck ou tout autre lanceur :
+//   electron.exe <projet> --scene "PC"      (action « Ouvrir »)
+//   screenswitcher://scene/PC               (action « Site web » / lien)
+// Si l'app tourne déjà, l'instance lancée transmet ses arguments puis se ferme (second-instance).
+const PROTOCOL = 'screenswitcher';
+const normName = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+
+function sceneFromArgv(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--scene' && argv[i + 1]) return argv[i + 1];
+    if (a.startsWith('--scene=')) return a.slice(8);
+    if (a.toLowerCase().startsWith(`${PROTOCOL}://`)) {
+      const m = a.slice(PROTOCOL.length + 3).replace(/\/+$/, '').match(/^scene\/(.+)$/i);
+      if (m) { try { return decodeURIComponent(m[1]); } catch { return m[1]; } }
+    }
+  }
+  return null;
+}
+
+function applySceneByName(name) {
+  const scene = config.scenes.find((s) => s.id === name) || config.scenes.find((s) => normName(s.name) === normName(name));
+  if (!scene) { notify('Scène introuvable', `Aucune scène « ${name} »`, true); return; }
+  applyScene(scene.id).catch(() => {});
+}
+
+function registerProtocol() {
+  try {
+    if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
+    else app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [ROOT]);
+  } catch (e) { console.log('[protocol]', e.message); }
+}
+
+ipcMain.handle('scene-command', (_e, name) => ({
+  command: `"${process.execPath}" ${app.isPackaged ? '' : `"${ROOT}" `}--scene "${name}"`,
+  url: `${PROTOCOL}://scene/${encodeURIComponent(name)}`,
+}));
+ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text)); return true; });
+
 // ---------------------------------------------------------------- démarrage
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', showWindow);
+  app.on('second-instance', (_e, argv) => {
+    const name = sceneFromArgv(argv);
+    if (name) applySceneByName(name); else showWindow();
+  });
   app.whenReady().then(async () => {
     app.setAppUserModelId(APP_ID);
     ensureStartMenuShortcut();
     migrateAutostart();
+    registerProtocol();
     tray = new Tray(nativeImage.createFromPath(iconPath(32)));
     tray.on('click', showWindow);
     const hadConfig = loadConfig();
@@ -285,7 +329,9 @@ if (!app.requestSingleInstanceLock()) {
     }
     registerShortcuts();
     refreshTray();
-    if (!process.argv.includes('--hidden')) showWindow();
+    const startScene = sceneFromArgv(process.argv);
+    if (startScene) applySceneByName(startScene);
+    else if (!process.argv.includes('--hidden')) showWindow();
   });
   app.on('window-all-closed', () => { /* reste dans la zone de notification */ });
   app.on('will-quit', () => { globalShortcut.unregisterAll(); native.stop(); });

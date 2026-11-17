@@ -111,9 +111,26 @@ function render() {
   if (status) { st.textContent = status[0]; st.className = status[1]; }
   else { st.textContent = draft.shortcut && (!saved || saved.shortcut !== draft.shortcut) ? 'Enregistre pour activer' : ''; st.className = 'muted'; }
 
+  renderLaunch(saved);
   renderLayout();
   renderMonitors();
   renderAudio();
+}
+
+// lien / commande pour lancer la scène depuis le Stream Deck (basés sur le nom enregistré)
+async function renderLaunch(saved) {
+  const show = !!saved;
+  document.querySelector('.launch').classList.toggle('hidden', !show);
+  if (!show) return;
+  const { url } = await window.api.sceneCommand(saved.name);
+  $('#scene-url').textContent = url;
+}
+async function copyLaunch(kind) {
+  const saved = state.scenes.find((x) => x.id === draft.id);
+  if (!saved) return;
+  const r = await window.api.sceneCommand(saved.name);
+  await window.api.copy(kind === 'url' ? r.url : r.command);
+  toast(kind === 'url' ? 'Lien copié' : 'Commande copiée');
 }
 
 // Écrans actifs + écrans branchés mais désactivés (sans position ni \\.\DISPLAYn)
@@ -345,6 +362,8 @@ $('#btn-new').onclick = () => {
   $('#f-name').select();
 };
 $('#btn-save').onclick = saveDraft;
+$('#btn-copy-url').onclick = () => copyLaunch('url');
+$('#btn-copy-cmd').onclick = () => copyLaunch('cmd');
 $('#btn-apply').onclick = async () => { await saveDraft(); await applySaved(draft.id); };
 $('#btn-delete').onclick = async () => {
   if (!confirm(`Supprimer la scène « ${draft.name} » ?`)) return;

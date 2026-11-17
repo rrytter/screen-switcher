@@ -23,6 +23,17 @@ Au lancement, l'app crée/met à jour le raccourci `Screen Switcher` du menu Dé
 
 Si le dossier du projet est déplacé, relancer l'app une fois à la main puis décocher/recocher le démarrage automatique.
 
+## Lancer une scène depuis le Stream Deck (ou un autre lanceur)
+
+Sans passer par un raccourci clavier, deux formes (boutons « Copier le lien » / « Copier la commande » dans l'éditeur) :
+
+| Action Stream Deck | Valeur |
+|---|---|
+| **Site web** | `screenswitcher://scene/Projecteur` |
+| **Ouvrir** | `"…\node_modules\electron\dist\electron.exe" "…\screen-switcher" --scene "Projecteur"` |
+
+La scène est retrouvée par son nom (sans tenir compte de la casse ni des accents) : renommer une scène casse les touches qui l'appellent. Si l'app tourne, l'instance lancée transmet la demande puis se ferme ; sinon l'app démarre cachée et applique la scène. Le protocole `screenswitcher://` est enregistré dans `HKCU\Software\Classes` au lancement de l'app.
+
 ## Structure
 
 | Fichier | Rôle |
