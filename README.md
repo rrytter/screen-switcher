@@ -1,6 +1,6 @@
 # Screen Switcher
 
-Petit outil Windows qui applique des **scènes** d'affichage d'un raccourci clavier, d'un clic dans la zone de notification ou d'une touche de Stream Deck. Pensé pour le télétravail : un PC perso et un laptop pro qui partagent les mêmes écrans, un projecteur, une console…
+Petit outil Windows qui applique des **scènes** d'affichage d'un raccourci clavier, d'un clic dans la zone de notification ou depuis un lanceur externe (pavé de touches programmables, script…). Pensé pour le télétravail : un PC perso et un laptop pro qui partagent les mêmes écrans, un projecteur, une console…
 
 Une scène peut :
 
@@ -50,14 +50,16 @@ Un écran non standard dont on a trouvé les codes peut être ajouté à `MODEL_
 
 **Acer ED270U P (ACR080E)**, testé : écriture `0x11`/`0x12` → DisplayPort ; `0x01`/`0x0F`/`0x10` → port **HDMI 2** ; le port **HDMI 1 n'est joignable par aucun code**. Brancher l'appareil à piloter (laptop) sur HDMI 2.
 
-## Stream Deck et autres lanceurs
+## Lanceurs
 
-Chaque scène peut aussi se lancer sans raccourci clavier (boutons « Copier le lien » / « Copier la commande » dans l'éditeur) :
+Chaque scène peut aussi se lancer sans raccourci clavier, depuis n'importe quel outil capable d'ouvrir un lien ou d'exécuter un programme (boutons « Copier le lien » / « Copier la commande » dans l'éditeur) :
 
-| Action Stream Deck | Valeur |
+| Type de lanceur | Valeur |
 |---|---|
-| **Site web** | `screenswitcher://scene/Projecteur` |
-| **Ouvrir** | `"…\Screen Switcher.exe" --scene "Projecteur"` |
+| ouvre un lien | `screenswitcher://scene/Projecteur` |
+| exécute un programme | `"…\Screen Switcher.exe" --scene "Projecteur"` |
+
+Les touches programmables d'un clavier ou d'une souris peuvent aussi simplement envoyer le raccourci clavier de la scène.
 
 La scène est retrouvée par son nom (casse et accents ignorés) : renommer une scène casse les touches qui l'appellent.
 

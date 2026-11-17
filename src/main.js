@@ -271,7 +271,7 @@ function migrateAutostart() {
 ipcMain.handle('capture', (_e, on) => { on ? globalShortcut.unregisterAll() : registerShortcuts(); return publicState(); });
 
 // ---------------------------------------------------------------- lancement d'une scène de l'extérieur
-// Deux formes, pour le Stream Deck ou tout autre lanceur :
+// Deux formes, pour un lanceur externe (pavé de touches programmables, raccourci, script…) :
 //   electron.exe <projet> --scene "PC"      (action « Ouvrir »)
 //   screenswitcher://scene/PC               (action « Site web » / lien)
 // Si l'app tourne déjà, l'instance lancée transmet ses arguments puis se ferme (second-instance).

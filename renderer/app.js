@@ -117,7 +117,7 @@ function render() {
   renderAudio();
 }
 
-// lien / commande pour lancer la scène depuis le Stream Deck (basés sur le nom enregistré)
+// lien / commande pour lancer la scène depuis un lanceur externe (basés sur le nom enregistré)
 async function renderLaunch(saved) {
   const show = !!saved;
   document.querySelector('.launch').classList.toggle('hidden', !show);
