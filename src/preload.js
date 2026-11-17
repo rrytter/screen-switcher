@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('api', {
   autostart: (on) => ipcRenderer.invoke('autostart', on),
   capture: (on) => ipcRenderer.invoke('capture', on),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
+  onHardware: (cb) => ipcRenderer.on('hardware', (_e, h) => cb(h)),
 });

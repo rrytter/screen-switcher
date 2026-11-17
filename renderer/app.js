@@ -28,7 +28,7 @@ function toast(msg, err = false) {
   clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.add('hidden'), err ? 6000 : 2500);
 }
 const prettyKeys = (acc) => (acc || '').replace(/Control/g, 'Ctrl').replace(/\+/g, ' + ');
-const monName = (m) => state.monitorNames[m.hwId] || m.name || m.model;
+const monName = (m) => (m.hwId && state.monitorNames[m.hwId]) || (m.devicePath && state.monitorNames[m.devicePath]) || m.name || m.model;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -116,60 +116,103 @@ function render() {
   renderAudio();
 }
 
+// Écrans actifs + écrans branchés mais désactivés (sans position ni \\.\DISPLAYn)
+function allScreens() {
+  const byPath = {};
+  for (const [hwId, p] of Object.entries(state.devicePaths || {})) byPath[p] = hwId;
+  const inactive = (hw.targets || []).filter((t) => !t.active)
+    .map((t) => ({ inactive: true, devicePath: t.devicePath, name: t.name, hwId: byPath[t.devicePath] || null, model: (t.devicePath.split('#')[1] || '') }));
+  return [...hw.monitors, ...inactive];
+}
+const sameScreen = (ref, m) => !!ref && ((ref.hwId && ref.hwId === m.hwId) || (ref.devicePath && ref.devicePath === m.devicePath));
+const displayState = (m) => { const d = (draft.displays || []).find((x) => x.devicePath && x.devicePath === m.devicePath); return d ? d.enabled : undefined; };
+
 function renderLayout() {
   const box = $('#layout');
   box.innerHTML = '';
-  const mons = hw.monitors;
-  if (!mons.length) { box.innerHTML = '<div class="empty" style="margin-top:55px">Détection des écrans…</div>'; return; }
-  const minX = Math.min(...mons.map((m) => m.x)), minY = Math.min(...mons.map((m) => m.y));
-  const maxX = Math.max(...mons.map((m) => m.x + m.width)), maxY = Math.max(...mons.map((m) => m.y + m.height));
+  const active = hw.monitors;
+  if (!active.length) { box.innerHTML = '<div class="empty" style="margin-top:55px">Détection des écrans…</div>'; return; }
+  // les écrans désactivés sont dessinés en pointillés à droite des autres
+  let maxRight = Math.max(...active.map((m) => m.x + m.width));
+  const minY0 = Math.min(...active.map((m) => m.y));
+  const boxes = active.map((m) => ({ m, x: m.x, y: m.y, w: m.width, h: m.height }));
+  for (const m of allScreens().filter((s) => s.inactive)) { boxes.push({ m, x: maxRight + 200, y: minY0, w: 1920, h: 1080 }); maxRight += 2120; }
+  const minX = Math.min(...boxes.map((b) => b.x)), minY = Math.min(...boxes.map((b) => b.y));
+  const maxX = Math.max(...boxes.map((b) => b.x + b.w)), maxY = Math.max(...boxes.map((b) => b.y + b.h));
   const W = box.clientWidth - 20, H = box.clientHeight - 20;
   const k = Math.min(W / (maxX - minX), H / (maxY - minY));
   const offX = 10 + (W - (maxX - minX) * k) / 2, offY = 10 + (H - (maxY - minY) * k) / 2;
-  for (const m of mons) {
+  for (const { m, x, y, w, h } of boxes) {
     const d = document.createElement('div');
-    const setsPrimary = !!draft.primary && draft.primary.hwId === m.hwId;
-    const inp = (draft.inputs || []).find((i) => i.hwId === m.hwId);
-    d.className = 'mon' + (setsPrimary || inp ? ' changed' : '');
-    Object.assign(d.style, {
-      left: offX + (m.x - minX) * k + 'px', top: offY + (m.y - minY) * k + 'px',
-      width: m.width * k - 4 + 'px', height: m.height * k - 4 + 'px',
-    });
+    const ds = displayState(m);
+    const off = m.inactive ? ds !== true : ds === false;
+    const setsPrimary = !off && sameScreen(draft.primary, m);
+    const inp = off ? null : (draft.inputs || []).find((i) => i.hwId && i.hwId === m.hwId);
+    d.className = 'mon' + (off ? ' off' : '') + (setsPrimary || inp || ds !== undefined ? ' changed' : '');
+    Object.assign(d.style, { left: offX + (x - minX) * k + 'px', top: offY + (y - minY) * k + 'px', width: w * k - 4 + 'px', height: h * k - 4 + 'px' });
     const t = document.createElement('div'); t.className = 't'; t.textContent = monName(m);
     d.append(t);
     const tag = (txt, cls) => { const b = document.createElement('div'); b.className = cls; b.textContent = txt; d.append(b); };
+    if (ds === false) tag('Désactivé', 'tag');
+    else if (ds === true && m.inactive) tag('Activé', 'tag');
+    else if (m.inactive) tag('désactivé (inchangé)', 's');
     if (setsPrimary) tag('Écran principal', 'tag');
     if (inp) tag(`Source : ${inputName(inp.value, m)}`, 'tag');
-    if (!setsPrimary && !inp) tag('inchangé', 's');
+    if (!off && !setsPrimary && !inp && ds === undefined) tag('inchangé', 's');
     box.append(d);
   }
+}
+
+function setDisplay(m, value) {
+  draft.displays = (draft.displays || []).filter((d) => d.devicePath !== m.devicePath);
+  if (value !== '') draft.displays.push({ devicePath: m.devicePath, name: monName(m), enabled: value === 'on' });
+  // un écran désactivé ne peut pas être principal
+  if (value === 'off' && sameScreen(draft.primary, m)) draft.primary = null;
+  renderLayout(); renderMonitors();
 }
 
 function renderMonitors() {
   const tb = $('#monitor-rows');
   tb.innerHTML = '';
-  for (const m of hw.monitors) {
+  for (const m of allScreens()) {
     const tr = document.createElement('tr');
+    const ds = displayState(m);
+    const willBeOff = m.inactive ? ds !== true : ds === false;
 
-    // nom modifiable
+    // nom modifiable (mémorisé par hwId et par devicePath, pour le retrouver écran désactivé)
     const c1 = document.createElement('td');
     const alias = document.createElement('input');
-    alias.className = 'alias'; alias.value = monName(m); alias.title = m.hwId;
+    alias.className = 'alias'; alias.value = monName(m); alias.title = m.devicePath || m.hwId;
     alias.onchange = async () => {
-      const names = { ...state.monitorNames, [m.hwId]: alias.value.trim() || undefined };
+      const v = alias.value.trim() || undefined;
+      const names = { ...state.monitorNames };
+      if (m.hwId) names[m.hwId] = v;
+      if (m.devicePath) names[m.devicePath] = v;
       state = await window.api.save({ monitorNames: names });
       renderLayout();
     };
     const sub = document.createElement('div'); sub.className = 'sub';
-    sub.textContent = `${m.name || m.model} · ${m.device.replace('\\\\.\\', '')} · ${m.width}×${m.height} ${m.hz} Hz`;
+    sub.textContent = m.inactive ? `${m.name || m.model} · désactivé actuellement`
+      : `${m.name || m.model} · ${m.device.replace('\\\\.\\', '')} · ${m.width}×${m.height} ${m.hz} Hz`;
     c1.append(alias, sub);
+
+    // affichage : activé / désactivé
+    const cD = document.createElement('td');
+    const dsel = document.createElement('select');
+    dsel.append(new Option('Ne pas changer', ''), new Option('Activé', 'on'), new Option('Désactivé', 'off'));
+    dsel.value = ds === true ? 'on' : ds === false ? 'off' : '';
+    if (!m.devicePath) { dsel.disabled = true; dsel.title = 'Identifiant d\'écran introuvable'; }
+    dsel.onchange = () => setDisplay(m, dsel.value);
+    cD.append(dsel);
 
     // écran principal
     const c2 = document.createElement('td');
     const lab = document.createElement('label'); lab.className = 'radio';
-    const r = document.createElement('input'); r.type = 'radio'; r.name = 'primary'; r.value = m.hwId;
-    r.checked = !!draft.primary && draft.primary.hwId === m.hwId;
-    r.onchange = () => { draft.primary = { hwId: m.hwId, device: m.device }; renderLayout(); };
+    const r = document.createElement('input'); r.type = 'radio'; r.name = 'primary'; r.value = m.devicePath || m.hwId;
+    r.checked = sameScreen(draft.primary, m);
+    r.disabled = willBeOff;
+    r.title = willBeOff ? 'Active l\'écran pour pouvoir le rendre principal' : '';
+    r.onchange = () => { draft.primary = { hwId: m.hwId || undefined, device: m.device || undefined, devicePath: m.devicePath || undefined }; renderLayout(); };
     lab.append(r, document.createTextNode(m.primary ? ' (actuel)' : ''));
     c2.append(lab);
 
@@ -177,8 +220,10 @@ function renderMonitors() {
     const c3 = document.createElement('td');
     const cell = document.createElement('div'); cell.className = 'input-cell';
     const sel = document.createElement('select');
-    const cur = (draft.inputs || []).find((i) => i.hwId === m.hwId);
-    if (!m.ddc) {
+    const cur = (draft.inputs || []).find((i) => i.hwId && i.hwId === m.hwId);
+    if (m.inactive) {
+      sel.append(new Option('Écran désactivé', '')); sel.disabled = true;
+    } else if (!m.ddc) {
       sel.append(new Option('DDC/CI non disponible', '')); sel.disabled = true;
       if (cur) { sel.append(new Option(`${inputName(cur.value, m)} (enregistrée)`, cur.value)); sel.value = cur.value; sel.disabled = false; }
     } else if (profileOf(m)) {
@@ -213,7 +258,7 @@ function renderMonitors() {
     cell.append(sel, hex);
     c3.append(cell);
 
-    tr.append(c1, c2, c3);
+    tr.append(c1, cD, c2, c3);
     tb.append(tr);
   }
   document.querySelector('tfoot input[name=primary]').checked = !draft.primary;
@@ -294,7 +339,7 @@ async function applySaved(id) {
 }
 
 $('#btn-new').onclick = () => {
-  draft = { id: uid(), name: 'Nouvelle scène', shortcut: '', inputs: [], primary: null, audio: null };
+  draft = { id: uid(), name: 'Nouvelle scène', shortcut: '', inputs: [], primary: null, audio: null, displays: [] };
   selId = draft.id;
   render();
   $('#f-name').select();
@@ -323,6 +368,16 @@ $('#opt-autostart').onchange = async (e) => { state.autostart = await window.api
 $('#opt-notify').onchange = async (e) => { state = await window.api.save({ settings: { notify: e.target.checked } }); };
 window.addEventListener('resize', () => draft && renderLayout());
 window.api.onState((s) => { state = s; render(); });
+// détection rapide envoyée après chaque scène (sans les infos DDC, coûteuses) : on garde celles qu'on avait
+window.api.onHardware((h) => {
+  if (!h) return;
+  const prev = Object.fromEntries(hw.monitors.map((m) => [m.hwId, m]));
+  const keep = (m) => (prev[m.hwId] ? { ...m, ddc: prev[m.hwId].ddc, ddcInputs: prev[m.hwId].ddcInputs, ddcCaps: prev[m.hwId].ddcCaps } : m);
+  hw = { ...h, monitors: h.monitors.map(keep) };
+  const missingDdc = h.monitors.some((m) => !prev[m.hwId]);
+  render();
+  if (missingDdc) window.api.hardware().then((full) => { hw = full; render(); }).catch(() => {});
+});
 
 // ------------------------------------------------------------ init
 (async () => {

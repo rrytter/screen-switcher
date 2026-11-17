@@ -91,10 +91,12 @@ namespace ScreenSwitcher {
   }
 
   public class MonitorInfo {
-    public string device; public string hwId; public string model; public bool primary;
+    public string device; public string hwId; public string model; public string devicePath; public bool primary;
     public int x, y, width, height, hz;
     public bool ddc; public string ddcCaps; public int[] ddcInputs; public int currentInput;
   }
+
+  public class TargetInfo { public string devicePath; public string name; public bool active; public string device; }
 
   public static class Display {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool EnumDisplayDevices(string dev, int i, ref DISPLAY_DEVICE dd, int flags);
@@ -143,6 +145,8 @@ namespace ScreenSwitcher {
 
     public static List<MonitorInfo> List(bool withDdc) {
       var r = new List<MonitorInfo>();
+      var gdiToPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+      try { foreach (var t in ListTargets()) if (t.active && t.device != null) gdiToPath[t.device] = t.devicePath; } catch { }
       for (int i = 0; ; i++) {
         var dd = new DISPLAY_DEVICE(); dd.cb = Marshal.SizeOf(dd);
         if (!EnumDisplayDevices(null, i, ref dd, 0)) break;
@@ -156,6 +160,7 @@ namespace ScreenSwitcher {
         var parts = hw.Split('\\'); if (parts.Length > 1) model = parts[1];
         var m = new MonitorInfo {
           device = dd.DeviceName, hwId = hw, model = model, primary = (dd.StateFlags & 4) != 0,
+          devicePath = gdiToPath.ContainsKey(dd.DeviceName) ? gdiToPath[dd.DeviceName] : null,
           x = dm.dmPositionX, y = dm.dmPositionY, width = dm.dmPelsWidth, height = dm.dmPelsHeight, hz = dm.dmDisplayFrequency,
           ddcInputs = new int[0], ddcCaps = "", currentInput = -1
         };
@@ -196,31 +201,155 @@ namespace ScreenSwitcher {
       if (!done) throw new Exception("L'écran " + device + " a refusé la commande DDC");
     }
 
-    // ---- Écran principal via l'API CCD : la source en (0,0) devient principale ----
-    [StructLayout(LayoutKind.Explicit, Size = 72)] struct PATH { [FieldOffset(12)] public uint srcModeIdx; }
+    // ======================= API CCD (QueryDisplayConfig / SetDisplayConfig) =======================
+    // DISPLAYCONFIG_PATH_INFO (72 octets) : source (adaptateur, id, mode) puis cible (adaptateur, id, mode, ..., disponible)
+    [StructLayout(LayoutKind.Explicit, Size = 72)] struct PATH {
+      [FieldOffset(0)] public uint srcAdapterLow; [FieldOffset(4)] public int srcAdapterHigh;
+      [FieldOffset(8)] public uint srcId; [FieldOffset(12)] public uint srcModeIdx;
+      [FieldOffset(20)] public uint tgtAdapterLow; [FieldOffset(24)] public int tgtAdapterHigh;
+      [FieldOffset(28)] public uint tgtId; [FieldOffset(32)] public uint tgtModeIdx;
+      [FieldOffset(60)] public int targetAvailable; [FieldOffset(68)] public uint flags;
+    }
     [StructLayout(LayoutKind.Explicit, Size = 64)] struct MODE {
       [FieldOffset(0)] public uint infoType; [FieldOffset(28)] public int x; [FieldOffset(32)] public int y;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct DI_HEADER { public uint type; public uint size; public uint adapterLow; public int adapterHigh; public uint id; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct SOURCE_NAME {
+      public DI_HEADER h; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string gdi;
+    }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct TARGET_NAME {
+      public DI_HEADER h; public uint flags; public uint outTech; public ushort edidMfg; public ushort edidProd; public uint connector;
+      [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string friendly;
+      [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string path;
     }
     [DllImport("user32.dll")] static extern int GetDisplayConfigBufferSizes(uint flags, out uint nPaths, out uint nModes);
     [DllImport("user32.dll")] static extern int QueryDisplayConfig(uint flags, ref uint nPaths, [Out] PATH[] paths, ref uint nModes, [Out] MODE[] modes, IntPtr topo);
     [DllImport("user32.dll")] static extern int SetDisplayConfig(uint nPaths, PATH[] paths, uint nModes, MODE[] modes, uint flags);
+    [DllImport("user32.dll")] static extern int DisplayConfigGetDeviceInfo(ref SOURCE_NAME r);
+    [DllImport("user32.dll")] static extern int DisplayConfigGetDeviceInfo(ref TARGET_NAME r);
 
+    const uint QDC_ALL_PATHS = 1, QDC_ONLY_ACTIVE_PATHS = 2, PATH_ACTIVE = 1, MODE_IDX_INVALID = 0xFFFFFFFF;
+    const uint SDC_TOPOLOGY_EXTEND = 0x4, SDC_USE_SUPPLIED = 0x20, SDC_APPLY = 0x80, SDC_SAVE = 0x200, SDC_ALLOW_CHANGES = 0x400;
+
+    static void Query(uint flags, out PATH[] paths, out MODE[] modes) {
+      uint np, nm;
+      int rc = GetDisplayConfigBufferSizes(flags, out np, out nm);
+      if (rc != 0) throw new Exception("GetDisplayConfigBufferSizes = " + rc);
+      paths = new PATH[np]; modes = new MODE[nm];
+      rc = QueryDisplayConfig(flags, ref np, paths, ref nm, modes, IntPtr.Zero);
+      if (rc != 0) throw new Exception("QueryDisplayConfig = " + rc);
+      Array.Resize(ref paths, (int)np); Array.Resize(ref modes, (int)nm);
+    }
+    static void Apply(PATH[] paths, MODE[] modes) {
+      int rc = SetDisplayConfig((uint)paths.Length, paths, (uint)modes.Length, modes, SDC_APPLY | SDC_USE_SUPPLIED | SDC_SAVE | SDC_ALLOW_CHANGES);
+      if (rc != 0) throw new Exception("SetDisplayConfig = " + rc);
+    }
+    static TARGET_NAME TargetName(PATH p) {
+      var t = new TARGET_NAME();
+      t.h = new DI_HEADER { type = 2, size = (uint)Marshal.SizeOf(typeof(TARGET_NAME)), adapterLow = p.tgtAdapterLow, adapterHigh = p.tgtAdapterHigh, id = p.tgtId };
+      DisplayConfigGetDeviceInfo(ref t);
+      return t;
+    }
+    static string SourceGdi(PATH p) {
+      var s = new SOURCE_NAME();
+      s.h = new DI_HEADER { type = 1, size = (uint)Marshal.SizeOf(typeof(SOURCE_NAME)), adapterLow = p.srcAdapterLow, adapterHigh = p.srcAdapterHigh, id = p.srcId };
+      return DisplayConfigGetDeviceInfo(ref s) == 0 ? s.gdi : null;
+    }
+    static bool SameTarget(PATH a, PATH b) { return a.tgtAdapterLow == b.tgtAdapterLow && a.tgtAdapterHigh == b.tgtAdapterHigh && a.tgtId == b.tgtId; }
+
+    // Tous les écrans branchés, actifs ou désactivés. devicePath (\\?\DISPLAY#BNQ4D03#...) est l'identifiant stable.
+    public static List<TargetInfo> ListTargets() {
+      PATH[] paths; MODE[] modes; Query(QDC_ALL_PATHS, out paths, out modes);
+      var r = new List<TargetInfo>(); var seen = new List<PATH>();
+      foreach (var p in paths) {
+        if (p.targetAvailable == 0) continue;
+        int k = seen.FindIndex(x => SameTarget(x, p));
+        bool active = (p.flags & PATH_ACTIVE) != 0;
+        if (k >= 0) { if (active) { r[k].active = true; r[k].device = SourceGdi(p); } continue; }
+        var tn = TargetName(p);
+        if (string.IsNullOrEmpty(tn.path)) continue;
+        seen.Add(p);
+        r.Add(new TargetInfo { devicePath = tn.path, name = tn.friendly, active = active, device = active ? SourceGdi(p) : null });
+      }
+      return r;
+    }
+
+    static byte[] ToBytes<T>(T s) where T : struct {
+      int n = Marshal.SizeOf(typeof(T)); var b = new byte[n]; IntPtr p = Marshal.AllocHGlobal(n);
+      try { Marshal.StructureToPtr(s, p, false); Marshal.Copy(p, b, 0, n); } finally { Marshal.FreeHGlobal(p); }
+      return b;
+    }
+    static T FromBytes<T>(byte[] b, int offset) where T : struct {
+      int n = Marshal.SizeOf(typeof(T)); IntPtr p = Marshal.AllocHGlobal(n);
+      try { Marshal.Copy(b, offset, p, n); return (T)Marshal.PtrToStructure(p, typeof(T)); } finally { Marshal.FreeHGlobal(p); }
+    }
+
+    // Active ou désactive un écran (mode étendu).
+    // Retour : null si déjà dans l'état demandé ; à la désactivation, le chemin + modes exacts (base64)
+    // à repasser dans « saved » à la réactivation pour retrouver résolution, fréquence (ex. 59,94 Hz) et position.
+    public static string SetEnabled(string devicePath, bool on, string saved) {
+      PATH[] all; MODE[] modes; Query(QDC_ALL_PATHS, out all, out modes);
+      var candidates = new List<PATH>();
+      foreach (var p in all) if (p.targetAvailable != 0 && string.Equals(TargetName(p).path, devicePath, StringComparison.OrdinalIgnoreCase)) candidates.Add(p);
+      if (candidates.Count == 0) throw new Exception("Écran non branché ou introuvable");
+      var active = new List<PATH>(); foreach (var p in all) if ((p.flags & PATH_ACTIVE) != 0) active.Add(p);
+      bool isOn = active.Exists(a => SameTarget(a, candidates[0]));
+      if (isOn == on) return null;
+
+      if (!on) {
+        var cur = active.Find(a => SameTarget(a, candidates[0]));
+        var rest = active.FindAll(a => !SameTarget(a, candidates[0]));
+        if (rest.Count == 0) throw new Exception("Impossible de désactiver le dernier écran actif");
+        string blob = "";
+        if (cur.srcModeIdx < modes.Length && cur.tgtModeIdx < modes.Length) {
+          var b = new List<byte>(ToBytes(cur)); b.AddRange(ToBytes(modes[cur.srcModeIdx])); b.AddRange(ToBytes(modes[cur.tgtModeIdx]));
+          blob = Convert.ToBase64String(b.ToArray());
+        }
+        Apply(rest.ToArray(), modes);
+        return blob;
+      }
+      // 1) réactivation avec le chemin et les modes mémorisés (si la source est libre)
+      if (!string.IsNullOrEmpty(saved)) {
+        try {
+          var b = Convert.FromBase64String(saved);
+          var sp = FromBytes<PATH>(b, 0); var sm = FromBytes<MODE>(b, 72); var tm = FromBytes<MODE>(b, 72 + 64);
+          bool srcUsed = active.Exists(a => a.srcAdapterLow == sp.srcAdapterLow && a.srcAdapterHigh == sp.srcAdapterHigh && a.srcId == sp.srcId);
+          if (!srcUsed && SameTarget(sp, candidates[0])) {
+            var newModes = new List<MODE>(modes); newModes.Add(sm); newModes.Add(tm);
+            sp.srcModeIdx = (uint)modes.Length; sp.tgtModeIdx = (uint)modes.Length + 1; sp.flags |= PATH_ACTIVE;
+            var list = new List<PATH>(active); list.Add(sp);
+            Apply(list.ToArray(), newModes.ToArray());
+            return "";
+          }
+        } catch { }
+      }
+      // 2) sinon un chemin vers cet écran dont la source n'est pas déjà utilisée sur le même adaptateur
+      foreach (var c in candidates) {
+        if (active.Exists(a => a.srcAdapterLow == c.srcAdapterLow && a.srcAdapterHigh == c.srcAdapterHigh && a.srcId == c.srcId)) continue;
+        var p = c; p.flags |= PATH_ACTIVE; p.srcModeIdx = MODE_IDX_INVALID; p.tgtModeIdx = MODE_IDX_INVALID;
+        var list = new List<PATH>(active); list.Add(p);
+        try { Apply(list.ToArray(), modes); return ""; } catch { }
+      }
+      // 3) repli : mode « Étendre » de Windows (réactive tous les écrans branchés, positions de la base Windows)
+      int rc = SetDisplayConfig(0, null, 0, null, SDC_APPLY | SDC_TOPOLOGY_EXTEND);
+      if (rc != 0) throw new Exception("Activation impossible (SetDisplayConfig = " + rc + ")");
+      return "";
+    }
+
+    public static string GdiFromPath(string devicePath) {
+      foreach (var t in ListTargets()) if (t.active && string.Equals(t.devicePath, devicePath, StringComparison.OrdinalIgnoreCase)) return t.device;
+      return null;
+    }
+
+    // ---- Écran principal : la source en (0,0) devient principale ----
     public static void SetPrimary(string target) {
       var dmT = new DEVMODE(); dmT.dmSize = (short)Marshal.SizeOf(dmT);
       if (!EnumDisplaySettings(target, -1, ref dmT)) throw new Exception("Écran introuvable : " + target);
       int ox = dmT.dmPositionX, oy = dmT.dmPositionY;
       if (ox == 0 && oy == 0) return;
-      const uint QDC_ONLY_ACTIVE_PATHS = 2;
-      uint np, nm;
-      int rc = GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, out np, out nm);
-      if (rc != 0) throw new Exception("GetDisplayConfigBufferSizes = " + rc);
-      var paths = new PATH[np]; var modes = new MODE[nm];
-      rc = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, ref np, paths, ref nm, modes, IntPtr.Zero);
-      if (rc != 0) throw new Exception("QueryDisplayConfig = " + rc);
-      for (int i = 0; i < nm; i++) if (modes[i].infoType == 1) { modes[i].x -= ox; modes[i].y -= oy; }
-      const uint SDC_USE_SUPPLIED = 0x20, SDC_APPLY = 0x80, SDC_SAVE = 0x200, SDC_ALLOW_CHANGES = 0x400;
-      rc = SetDisplayConfig(np, paths, nm, modes, SDC_APPLY | SDC_USE_SUPPLIED | SDC_SAVE | SDC_ALLOW_CHANGES);
-      if (rc != 0) throw new Exception("SetDisplayConfig = " + rc);
+      PATH[] paths; MODE[] modes; Query(QDC_ONLY_ACTIVE_PATHS, out paths, out modes);
+      for (int i = 0; i < modes.Length; i++) if (modes[i].infoType == 1) { modes[i].x -= ox; modes[i].y -= oy; }
+      Apply(paths, modes);
     }
   }
 }

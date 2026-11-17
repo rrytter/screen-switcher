@@ -47,9 +47,10 @@ function seedScenes(hw) {
   }
   if (pj && acers.length) {
     config.monitorNames[pj.hwId] = 'Projecteur BenQ';
-    const bureau = { id: uid(), name: 'Bureau', shortcut: 'Control+Alt+B', inputs: [],
+    const pjDisplay = (enabled) => (pj.devicePath ? [{ devicePath: pj.devicePath, name: pj.name, enabled }] : []);
+    const bureau = { id: uid(), name: 'Bureau', shortcut: 'Control+Alt+B', inputs: [], displays: pjDisplay(false),
       primary: { hwId: acers[0].hwId, device: acers[0].device }, audio: hw.audio.find((a) => a.isDefault && !a.name.includes('BenQ')) || audio('Haut-parleurs') || null };
-    const proj = { id: uid(), name: 'Projecteur', shortcut: 'Control+Alt+P', inputs: [],
+    const proj = { id: uid(), name: 'Projecteur', shortcut: 'Control+Alt+P', inputs: [], displays: pjDisplay(true),
       primary: { hwId: pj.hwId, device: pj.device }, audio: audio('BenQ') || null };
     if (proj.audio) proj.audio = { id: proj.audio.id, name: proj.audio.name };
     if (bureau.audio) bureau.audio = { id: bureau.audio.id, name: bureau.audio.name };
@@ -59,12 +60,23 @@ function seedScenes(hw) {
 }
 
 // ---------------------------------------------------------------- scènes
-// Les écrans sont mémorisés par ID matériel ; on retrouve leur \\.\DISPLAYn actuel
-function resolveDevice(ref) {
+// Les écrans sont mémorisés par ID matériel (hwId) et/ou devicePath (\\?\DISPLAY#BNQ4D03#…).
+// Un écran désactivé n'a plus de \\.\DISPLAYn : le helper le retrouve par devicePath après activation.
+function setHardware(hw) {
+  hardware = hw;
+  config.devicePaths = config.devicePaths || {};
+  for (const m of hw.monitors || []) if (m.hwId && m.devicePath) config.devicePaths[m.hwId] = m.devicePath;
+  return hw;
+}
+function resolveRef(ref) {
   if (!ref) return null;
   const mons = hardware ? hardware.monitors : [];
-  const m = mons.find((x) => x.hwId === ref.hwId) || mons.find((x) => x.device === ref.device);
-  return m ? m.device : ref.device;
+  const m = mons.find((x) => ref.hwId && x.hwId === ref.hwId) || mons.find((x) => ref.devicePath && x.devicePath === ref.devicePath)
+    || (!ref.hwId && !ref.devicePath ? mons.find((x) => x.device === ref.device) : null);
+  return {
+    device: m ? m.device : ref.device || null,
+    devicePath: ref.devicePath || (m && m.devicePath) || (config.devicePaths || {})[ref.hwId] || null,
+  };
 }
 
 async function applyScene(id) {
@@ -73,35 +85,49 @@ async function applyScene(id) {
   if (applying) return;
   applying = true;
   try {
-    if (!hardware) hardware = await native.list(false);
+    if (!hardware) setHardware(await native.list(false));
     // On ne saute une source que si l'écran annonce déjà la bonne ET que la dernière commande
     // envoyée par l'app à cet écran était la même : juste après une bascule, l'Acer annonce
     // parfois une valeur périmée, donc la lecture seule ne suffit pas.
     const lastInputs = config.lastInputs || {};
+    const displayModes = config.displayModes || {};
     const targets = (scene.inputs || []).filter((i) => i.value != null);
+    const displays = (scene.displays || []).filter((d) => d.devicePath && typeof d.enabled === 'boolean');
     const payload = {
-      primary: resolveDevice(scene.primary),
+      primary: resolveRef(scene.primary),
       audio: scene.audio ? scene.audio.id : null,
+      // saved = chemin + modes exacts mémorisés à la désactivation (résolution, fréquence, position)
+      displays: displays.map((d) => ({ devicePath: d.devicePath, enabled: d.enabled, saved: d.enabled ? displayModes[d.devicePath] || null : null })),
       inputs: targets.map((i) => {
         const model = (i.hwId || '').split('\\')[1] || '';
         const trust = lastInputs[i.hwId] === undefined || lastInputs[i.hwId] === i.value;
-        return { device: resolveDevice(i), value: i.value, skipIfRead: trust ? expectedRead(model, i.value) : null };
+        return { ...resolveRef(i), value: i.value, skipIfRead: trust ? expectedRead(model, i.value) : null };
       }),
     };
-    let res;
+    let res, applyError = null;
     try {
       res = await native.apply(payload);
       for (const i of targets) lastInputs[i.hwId] = i.value;
       config.lastInputs = lastInputs;
+    } catch (e) {
+      res = e.result;           // erreur partielle : on garde quand même les modes mémorisés
+      applyError = e;
     } finally {
-      if (payload.primary) hardware = await native.list(false).catch(() => hardware);
+      if (payload.primary || displays.length) setHardware(await native.list(false).catch(() => hardware));
     }
+    if (res && res.savedModes) {
+      for (const [p, blob] of Object.entries(res.savedModes)) if (blob) displayModes[p] = blob;
+      config.displayModes = displayModes;
+      saveConfig();
+    }
+    if (applyError) throw applyError;
     console.log('[apply]', scene.name, JSON.stringify(res || {}));
     config.lastSceneId = scene.id;
     saveConfig();
     refreshTray();
     notify(`Scène « ${scene.name} »`, '');
     win?.webContents.send('state', publicState());
+    win?.webContents.send('hardware', hardware);
   } catch (e) {
     notify('Échec de la scène', e.message, true);
     throw e;
@@ -196,7 +222,7 @@ function showWindow() {
 
 function publicState() {
   return {
-    scenes: config.scenes, monitorNames: config.monitorNames, settings: config.settings,
+    scenes: config.scenes, monitorNames: config.monitorNames, settings: config.settings, devicePaths: config.devicePaths || {},
     lastSceneId: config.lastSceneId, shortcutStatus,
     autostart: isAutostart(),
   };
@@ -204,7 +230,7 @@ function publicState() {
 
 // ---------------------------------------------------------------- IPC
 ipcMain.handle('state', () => publicState());
-ipcMain.handle('hardware', async () => { hardware = await native.list(true); return hardware; });
+ipcMain.handle('hardware', async () => setHardware(await native.list(true)));
 ipcMain.handle('apply', (_e, id) => applyScene(id));
 ipcMain.handle('save', (_e, patch) => {
   if (patch.scenes) config.scenes = patch.scenes;
@@ -252,7 +278,7 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('click', showWindow);
     const hadConfig = loadConfig();
     try {
-      hardware = await native.list(false);
+      setHardware(await native.list(false));
       if (!hadConfig) { seedScenes(hardware); saveConfig(); }
     } catch (e) {
       notify('Screen Switcher', 'Helper natif indisponible : ' + e.message, true);

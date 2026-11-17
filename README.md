@@ -2,11 +2,12 @@
 
 Petit outil Windows (Electron) qui applique des **scènes** d'affichage depuis un raccourci clavier global ou l'icône de la zone de notification :
 
+- **activer / désactiver un écran** (ex. couper la sortie HDMI du projecteur) ; à la réactivation, la résolution, la fréquence et la position mémorisées à la désactivation sont restaurées ;
 - **écran principal** (API Windows CCD `SetDisplayConfig`, disposition et fréquences conservées) ;
 - **sortie audio par défaut** (les 3 rôles Windows) ;
 - **source d'entrée de chaque écran** par DDC/CI (code VCP `0x60`), par exemple DisplayPort / HDMI 1 / HDMI 2.
 
-Une scène peut **alterner** avec une autre : si elle est déjà active, son raccourci applique la scène partenaire (ex. Projecteur ↔ Bureau).
+Les commandes inutiles sont évitées (écran déjà principal, déjà actif/inactif, source ou audio déjà en place).
 
 ## Lancer
 

@@ -28,7 +28,10 @@ class Native {
         const p = this.pending.get(msg.id);
         if (!p) return;
         this.pending.delete(msg.id);
-        msg.ok ? p.resolve(msg.result) : p.reject(new Error(msg.error || 'Erreur inconnue'));
+        if (msg.ok) { p.resolve(msg.result); return; }
+        const err = new Error(msg.error || 'Erreur inconnue');
+        err.result = msg.result;   // résultat partiel (ex. modes d'écran mémorisés malgré une erreur audio)
+        p.reject(err);
       });
       let stderr = '';
       this.proc.stderr.on('data', (d) => { stderr += d.toString(); });

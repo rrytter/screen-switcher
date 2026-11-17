@@ -63,6 +63,7 @@ input.alias { width: 170px; padding: 5px 8px; }
 .layout { position: relative; height: 150px; background: #12151c; border-radius: 10px; border: 1px solid var(--line); }
 .mon { position: absolute; border: 2px solid #3a4152; border-radius: 6px; background: #1d2330; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; text-align: center; padding: 4px; gap: 2px; overflow: hidden; }
 .mon.changed { background: #22293a; }
+.mon.off { border-style: dashed; background: transparent; opacity: .6; }
 .mon .t { font-weight: 600; margin-bottom: 2px; }
 .mon .s { color: var(--muted); font-size: 11px; }
 .mon .tag { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: #2c3a57; color: #cfe0ff; }
