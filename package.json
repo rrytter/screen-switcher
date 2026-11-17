@@ -1,0 +1,13 @@
+{
+  "name": "screen-switcher",
+  "version": "0.1.0",
+  "description": "Scènes d'affichage : écran principal, sortie audio et source d'entrée des écrans (DDC/CI), avec raccourcis globaux.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "45.3.3"
+  }
+}
