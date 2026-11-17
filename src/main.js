@@ -6,7 +6,12 @@ const { Native } = require('./native');
 const { expectedRead } = require('./profiles');
 
 const ROOT = path.join(__dirname, '..');
-const native = new Native(path.join(ROOT, 'native'));
+// app packagée : le code est dans app.asar, mais PowerShell et Windows (icône .ico) ont besoin de vrais fichiers
+// → native/ et assets/ sont extraits dans app.asar.unpacked (voir « asarUnpack » dans package.json)
+const UNPACKED = ROOT.replace(/app\.asar(?=[\\/]|$)/, 'app.asar.unpacked');
+const native = new Native(path.join(UNPACKED, 'native'));
+// dossier de config fixe (%APPDATA%\screen-switcher), quel que soit le productName : dev et version installée partagent les scènes
+app.setPath('userData', path.join(app.getPath('appData'), 'screen-switcher'));
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
 
 let win = null;
@@ -161,8 +166,8 @@ function registerShortcuts() {
 }
 
 // ---------------------------------------------------------------- UI
-const iconPath = (sz) => path.join(ROOT, 'assets', `icon-${sz}.png`);
-const ICO = path.join(ROOT, 'assets', 'icon.ico');
+const iconPath = (sz) => path.join(UNPACKED, 'assets', `icon-${sz}.png`);
+const ICO = path.join(UNPACKED, 'assets', 'icon.ico');
 const APP_ID = 'ScreenSwitcher.App';
 const LOGIN_NAME = 'Screen Switcher';           // nom de l'entrée « Run » du registre
 const OLD_LOGIN_NAME = 'local.screen-switcher'; // ancien nom (= ancien AppUserModelID)
@@ -173,7 +178,7 @@ function ensureStartMenuShortcut() {
   if (process.platform !== 'win32') return;
   const lnk = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Screen Switcher.lnk');
   const opts = {
-    target: process.execPath, args: app.isPackaged ? '' : `"${ROOT}"`, cwd: ROOT,
+    target: process.execPath, args: app.isPackaged ? '' : `"${ROOT}"`, cwd: app.isPackaged ? path.dirname(process.execPath) : ROOT,
     icon: ICO, iconIndex: 0, appUserModelId: APP_ID, description: 'Scènes d\'affichage et raccourcis',
   };
   try {
@@ -304,6 +309,13 @@ ipcMain.handle('scene-command', (_e, name) => ({
   url: `${PROTOCOL}://scene/${encodeURIComponent(name)}`,
 }));
 ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text)); return true; });
+// bouton « Tester » : la dernière valeur envoyée change, la prochaine scène ne devra pas sauter cet écran
+ipcMain.handle('test-input', async (_e, ref, value) => {
+  await native.setInput(resolveRef(ref), value);
+  config.lastInputs = { ...(config.lastInputs || {}), [ref.hwId]: value };
+  saveConfig();
+  return true;
+});
 
 // ---------------------------------------------------------------- démarrage
 if (!app.requestSingleInstanceLock()) {

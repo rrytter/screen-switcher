@@ -240,9 +240,13 @@ function renderMonitors() {
     const cur = (draft.inputs || []).find((i) => i.hwId && i.hwId === m.hwId);
     if (m.inactive) {
       sel.append(new Option('Écran désactivé', '')); sel.disabled = true;
-    } else if (!m.ddc) {
-      sel.append(new Option('DDC/CI non disponible', '')); sel.disabled = true;
-      if (cur) { sel.append(new Option(`${inputName(cur.value, m)} (enregistrée)`, cur.value)); sel.value = cur.value; sel.disabled = false; }
+    } else if (!m.ddc && !profileOf(m) && !cur) {
+      // aucun écho DDC à la détection (écran sur une autre source, DDC/CI coupé dans son menu, dock qui ne le transmet pas…)
+      sel.append(new Option('DDC/CI non détecté', ''));
+      for (const [c, n] of INPUTS) sel.append(new Option(n, c));
+      sel.append(new Option('Autre (code hexa)…', 'custom'));
+      sel.value = '';
+      sel.title = 'L\'écran n\'a pas répondu à la détection. Active DDC/CI dans son menu, puis « Actualiser la détection » ; tu peux quand même essayer un code avec « Tester ».';
     } else if (profileOf(m)) {
       sel.append(new Option('Ne pas changer', ''));
       for (const [c, n] of profileOf(m).inputs) sel.append(new Option(`${n} (${toHex(c)})`, c));
@@ -263,16 +267,31 @@ function renderMonitors() {
     }
     const hex = document.createElement('input');
     hex.className = 'hex hidden'; hex.placeholder = '0x12';
+    // « Tester » : envoie le code tout de suite pour trouver les bons codes d'un écran
+    const test = document.createElement('button');
+    test.className = 'btn ghost small'; test.textContent = 'Tester';
+    test.title = 'Envoie ce code à l\'écran maintenant (pour vérifier quelle source il sélectionne)';
+    const refreshTest = () => { test.disabled = !!m.inactive || !(draft.inputs || []).some((i) => i.hwId === m.hwId); };
+    test.onclick = async () => {
+      const i = (draft.inputs || []).find((x) => x.hwId === m.hwId);
+      if (!i) return;
+      test.disabled = true;
+      try { await window.api.testInput({ hwId: m.hwId, device: m.device, devicePath: m.devicePath }, i.value); toast(`${toHex(i.value)} envoyé à ${monName(m)}`); }
+      catch (e) { toast(e.message.replace(/^Error invoking remote method '[\w-]+': (Error: )?/, ''), true); }
+      finally { test.disabled = false; }
+    };
     sel.onchange = () => {
       hex.classList.toggle('hidden', sel.value !== 'custom');
       if (sel.value === 'custom') { hex.focus(); return; }
       setInput(m, sel.value === '' ? null : Number(sel.value));
+      test.disabled = sel.value === '';
     };
     hex.onchange = () => {
       const v = parseInt(hex.value.replace(/^0x/i, ''), 16);
-      if (Number.isFinite(v) && v > 0 && v < 256) setInput(m, v); else toast('Code invalide (ex. 0x12)', true);
+      if (Number.isFinite(v) && v > 0 && v < 256) { setInput(m, v); test.disabled = false; } else toast('Code invalide (ex. 0x12)', true);
     };
-    cell.append(sel, hex);
+    refreshTest();
+    cell.append(sel, hex, test);
     c3.append(cell);
 
     tr.append(c1, cD, c2, c3);

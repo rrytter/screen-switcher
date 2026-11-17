@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   capture: (on) => ipcRenderer.invoke('capture', on),
   sceneCommand: (name) => ipcRenderer.invoke('scene-command', name),
   copy: (text) => ipcRenderer.invoke('copy', text),
+  testInput: (ref, value) => ipcRenderer.invoke('test-input', ref, value),
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
   onHardware: (cb) => ipcRenderer.on('hardware', (_e, h) => cb(h)),
 });

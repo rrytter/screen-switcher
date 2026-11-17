@@ -58,6 +58,7 @@ class Native {
 
   list(ddc = true) { return this.call('list', { ddc }); }
   apply(scene) { return this.call('apply', { scene }); }
+  setInput(ref, value) { return this.call('input', { ...ref, value }); }
   stop() { if (this.proc) this.proc.kill(); }
 }
 

@@ -100,6 +100,11 @@ while ($true) {
                 }
                 Send @{ id = $req.id; ok = ($errors.Count -eq 0); error = ($errors -join "`n"); result = @{ skipped = $skipped; sent = $sent; savedModes = $savedModes } }
             }
+            'input' {
+                # bouton « Tester » de l'éditeur : envoie un code de source tout de suite
+                [ScreenSwitcher.Display]::SetInput((Resolve-Gdi $req), [int]$req.value)
+                Send @{ id = $req.id; ok = $true }
+            }
             'ping' { Send @{ id = $req.id; ok = $true } }
             default { Send @{ id = $req.id; ok = $false; error = "Commande inconnue : $($req.cmd)" } }
         }

@@ -1,60 +1,83 @@
 # Screen Switcher
 
-Petit outil Windows (Electron) qui applique des **scènes** d'affichage depuis un raccourci clavier global ou l'icône de la zone de notification :
+Petit outil Windows qui applique des **scènes** d'affichage d'un raccourci clavier, d'un clic dans la zone de notification ou d'une touche de Stream Deck. Pensé pour le télétravail : un PC perso et un laptop pro qui partagent les mêmes écrans, un projecteur, une console…
 
-- **activer / désactiver un écran** (ex. couper la sortie HDMI du projecteur) ; à la réactivation, la résolution, la fréquence et la position mémorisées à la désactivation sont restaurées ;
-- **écran principal** (API Windows CCD `SetDisplayConfig`, disposition et fréquences conservées) ;
-- **sortie audio par défaut** (les 3 rôles Windows) ;
-- **source d'entrée de chaque écran** par DDC/CI (code VCP `0x60`), par exemple DisplayPort / HDMI 1 / HDMI 2.
+Une scène peut :
+
+- **activer / désactiver un écran** (ex. couper la sortie HDMI du projecteur) ; à la réactivation, résolution, fréquence et position sont restaurées ;
+- choisir l'**écran principal** (disposition et fréquences conservées) ;
+- choisir la **sortie audio par défaut** ;
+- changer la **source d'entrée de chaque écran** (DisplayPort / HDMI…) par DDC/CI, pour passer les écrans du PC au laptop sans toucher aux boutons des écrans.
 
 Les commandes inutiles sont évitées (écran déjà principal, déjà actif/inactif, source ou audio déjà en place).
 
-## Lancer
+## Installation
 
-```bash
-npm install
-npm start
-```
+1. Télécharger `Screen-Switcher-Setup-<version>.exe` dans les [Releases](../../releases).
+2. Le lancer. L'installateur n'est pas signé : Windows SmartScreen affiche « Windows a protégé votre ordinateur » → **Informations complémentaires** → **Exécuter quand même**.
+3. L'installation se fait pour l'utilisateur courant (pas de droits admin), dans `%LOCALAPPDATA%\Programs\Screen Switcher`. Désinstallation : Paramètres → Applications.
 
-Fermer la fenêtre la réduit dans la zone de notification ; « Quitter » est dans le menu de l'icône.
-Option « Lancer au démarrage de Windows » dans la fenêtre : valeur `Screen Switcher` dans `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (démarre caché, avec `--hidden`).
+L'app vit dans la zone de notification (icône bleue). Fermer la fenêtre ne la quitte pas ; « Quitter » est dans le menu de l'icône. Cocher **« Lancer au démarrage de Windows »** pour que les raccourcis marchent dès l'ouverture de session.
 
-Au lancement, l'app crée/met à jour le raccourci `Screen Switcher` du menu Démarrer (AppUserModelID `ScreenSwitcher.App`) : c'est lui qui donne la bonne icône dans la barre des tâches et les notifications, même lancé depuis le code source.
+**Prérequis** : Windows 10/11, PowerShell 5.1 (intégré à Windows). Sur un **PC d'entreprise verrouillé** (AppLocker, PowerShell en mode restreint), le moteur de l'app peut être bloqué : l'installer plutôt sur le PC perso, auquel les écrans sont reliés.
 
-Si le dossier du projet est déplacé, relancer l'app une fois à la main puis décocher/recocher le démarrage automatique.
+## Premiers pas
 
-## Lancer une scène depuis le Stream Deck (ou un autre lanceur)
+1. **+ Nouvelle scène**, lui donner un nom.
+2. **Raccourci clavier** : cliquer sur le champ puis taper la combinaison (ex. Ctrl+Alt+F1).
+3. **Écrans** : pour chaque écran, choisir s'il faut l'activer/désactiver, s'il devient principal, et sa source d'entrée.
+4. **Sortie audio** si besoin, puis **Enregistrer et appliquer**.
 
-Sans passer par un raccourci clavier, deux formes (boutons « Copier le lien » / « Copier la commande » dans l'éditeur) :
+Glisser-déposer dans la liste pour réordonner les scènes.
+
+## Compatibilité des écrans (source d'entrée)
+
+Écran principal, activation/désactivation et audio passent par Windows et marchent avec **tous les écrans**. Le changement de **source d'entrée** dépend de l'écran :
+
+- il faut que **DDC/CI soit activé** dans le menu (OSD) de l'écran (souvent activé par défaut) ;
+- les écrans de laptop, les télés et les projecteurs ne le gèrent généralement pas ;
+- certains docks / hubs (notamment **DisplayLink**) ne transmettent pas le DDC/CI ; un câble direct DP/HDMI/USB-C vers le PC fonctionne ;
+- couper la **détection automatique de source** dans le menu de l'écran, sinon il peut rebasculer seul dès qu'un appareil s'allume ;
+- beaucoup d'écrans **n'utilisent pas les codes standard** (voir ci-dessous).
+
+### Trouver les bons codes de son écran
+
+Dans une scène, choisir une source dans la liste puis cliquer **Tester** : le code est envoyé immédiatement. Si l'écran ne bascule pas sur la bonne entrée, essayer les autres valeurs, ou « Autre (code hexa)… ». Le PC garde la main même quand l'écran affiche une autre source : on peut toujours revenir avec le code qui mène au PC.
+
+Codes standard (norme MCCS) : `0x0F` DisplayPort 1 · `0x10` DisplayPort 2 · `0x11` HDMI 1 · `0x12` HDMI 2 · `0x1B` USB-C · `0x03` DVI · `0x01` VGA. Les entrées marquées ✓ sont celles que l'écran annonce (liste souvent incomplète ou fausse).
+
+Un écran non standard dont on a trouvé les codes peut être ajouté à `MODEL_PROFILES` dans `src/profiles.js` (le code modèle, ex. `ACR080E`, est affiché sous le nom de l'écran). Les retours sont bienvenus via les issues.
+
+**Acer ED270U P (ACR080E)**, testé : écriture `0x11`/`0x12` → DisplayPort ; `0x01`/`0x0F`/`0x10` → port **HDMI 2** ; le port **HDMI 1 n'est joignable par aucun code**. Brancher l'appareil à piloter (laptop) sur HDMI 2.
+
+## Stream Deck et autres lanceurs
+
+Chaque scène peut aussi se lancer sans raccourci clavier (boutons « Copier le lien » / « Copier la commande » dans l'éditeur) :
 
 | Action Stream Deck | Valeur |
 |---|---|
 | **Site web** | `screenswitcher://scene/Projecteur` |
-| **Ouvrir** | `"…\node_modules\electron\dist\electron.exe" "…\screen-switcher" --scene "Projecteur"` |
+| **Ouvrir** | `"…\Screen Switcher.exe" --scene "Projecteur"` |
 
-La scène est retrouvée par son nom (sans tenir compte de la casse ni des accents) : renommer une scène casse les touches qui l'appellent. Si l'app tourne, l'instance lancée transmet la demande puis se ferme ; sinon l'app démarre cachée et applique la scène. Le protocole `screenswitcher://` est enregistré dans `HKCU\Software\Classes` au lancement de l'app.
+La scène est retrouvée par son nom (casse et accents ignorés) : renommer une scène casse les touches qui l'appellent.
 
-## Structure
+## Développement
+
+```bash
+npm install
+npm start          # depuis le code source
+npm run dist       # installateur dans dist/
+```
 
 | Fichier | Rôle |
 |---|---|
-| `src/main.js` | process principal : tray, raccourcis globaux, scènes, config |
+| `src/main.js` | process principal : tray, raccourcis globaux, scènes, config, démarrage auto |
 | `src/native.js` | pont JSON-lignes vers le helper PowerShell persistant |
 | `src/profiles.js` | codes DDC des écrans non standard (partagé main / interface) |
 | `native/helper.ps1` | boucle stdin/stdout, compile `Native.cs` une fois au démarrage |
-| `native/Native.cs` | interop Windows (écrans, audio IPolicyConfig, DDC/CI dxva2) |
-| `renderer/` | interface d'édition |
+| `native/Native.cs` | interop Windows : API CCD, audio `IPolicyConfig`, DDC/CI `dxva2` |
+| `renderer/` | interface d'édition (HTML/CSS/JS sans framework) |
 
-La configuration est dans `%APPDATA%\screen-switcher\config.json`. Les écrans y sont repérés par leur ID matériel (`MONITOR\ACR080E\…`), donc un changement de numéro `DISPLAYn` ne casse pas les scènes.
+Configuration : `%APPDATA%\screen-switcher\config.json` (partagée entre la version installée et `npm start`). Voir `CLAUDE.md` pour les détails techniques et les pièges connus.
 
-## Codes d'entrée DDC courants
-
-`0x0F` DisplayPort 1 · `0x10` DisplayPort 2 · `0x11` HDMI 1 · `0x12` HDMI 2 · `0x1B` USB-C · `0x03` DVI · `0x01` VGA.
-La liste annoncée par l'écran (✓ dans l'interface) est souvent incomplète ou fausse.
-
-**Acer ED270U P (ACR080E), testé le 2026-11-17** : firmware non standard, géré par `MODEL_PROFILES` dans `src/profiles.js`.
-- Écriture : `0x11` ou `0x12` → DisplayPort ; `0x01`, `0x0F` ou `0x10` → port **HDMI 2**. Le port **HDMI 1 n'est joignable par aucun code** (0x00–0xFF balayés).
-- Lecture : DP = `0x0F`, HDMI 1 = `0x12`, HDMI 2 = `0x11`.
-- Donc : brancher l'appareil à piloter (laptop) sur **HDMI 2**, et ce qu'on sélectionne rarement (Switch 2) sur HDMI 1.
-La source « actuelle » lue sur un écran qui affiche un autre appareil peut être fausse ; l'envoi de la commande fonctionne quand même.
-Pense à désactiver la détection automatique de source dans le menu de l'écran, sinon il peut rebasculer seul.
+Version de dev et version installée enregistrent toutes deux le raccourci du menu Démarrer, le lien `screenswitcher://` et l'entrée de démarrage auto : c'est la dernière lancée qui gagne. N'en garder qu'une au quotidien.

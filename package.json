@@ -1,13 +1,38 @@
 {
   "name": "screen-switcher",
-  "version": "0.1.0",
+  "productName": "Screen Switcher",
+  "version": "1.0.0-beta.1",
   "description": "Scènes d'affichage : écran principal, sortie audio et source d'entrée des écrans (DDC/CI), avec raccourcis globaux.",
   "main": "src/main.js",
   "private": true,
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never"
   },
   "devDependencies": {
-    "electron": "45.3.3"
+    "electron": "45.3.3",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "ScreenSwitcher.App",
+    "productName": "Screen Switcher",
+    "directories": { "output": "dist" },
+    "files": ["src/**", "renderer/**", "native/**", "assets/**", "package.json"],
+    "asarUnpack": ["native/**", "assets/**"],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Screen Switcher",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Screen-Switcher-Setup-${version}.${ext}"
+    }
   }
 }

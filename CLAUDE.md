@@ -8,7 +8,8 @@ Interface, commentaires et messages en **français**.
 
 ```bash
 npm install
-npm start          # electron . (pas de build : l'app tourne depuis le code source)
+npm start          # electron . depuis le code source
+npm run dist       # installateur NSIS (par utilisateur, non signé) dans dist/ ; publier via une release GitHub
 node --check src/main.js renderer/app.js   # pas de tests automatisés ; au minimum vérifier la syntaxe
 ```
 
@@ -43,6 +44,13 @@ Config utilisateur : `%APPDATA%\screen-switcher\config.json` (scènes, noms d'é
 - `hwId` (`MONITOR\ACR080E\{…}\0003`) : écrans actifs, via `EnumDisplayDevices`.
 - `devicePath` (`\\?\DISPLAY#BNQ4D03#…`) : identifiant CCD stable, **seul disponible pour un écran désactivé** (il n'a plus de `\\.\DISPLAYn`). `config.devicePaths` mémorise hwId → devicePath.
 - `\\.\DISPLAYn` change selon la config : toujours le résoudre au moment d'appliquer (`resolveRef` dans main, `Resolve-Gdi` dans le helper).
+
+## App packagée
+
+- `native/` et `assets/` sont extraits de l'asar (`asarUnpack`) : PowerShell doit exécuter `helper.ps1` et Windows lire `icon.ico` sur disque. Dans main, passer par `UNPACKED` pour ces chemins.
+- `userData` est forcé sur `%APPDATA%\screen-switcher` (sinon le `productName` « Screen Switcher » changerait le dossier et ferait perdre la config).
+- `appId` electron-builder = AUMID `ScreenSwitcher.App` (raccourci du menu Démarrer, icône, notifications).
+- Tester sans installer : `dist\win-unpacked\Screen Switcher.exe` (elle réenregistre raccourci et protocole sur son exe : relancer `npm start` ensuite).
 
 ## Pièges connus (testés à la main, ne pas « corriger »)
 
