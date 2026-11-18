@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, Notification, shell, clipboard } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, Notification, shell, clipboard, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFileSync } = require('child_process');
@@ -106,7 +106,7 @@ async function applyScene(id) {
       inputs: targets.map((i) => {
         const model = (i.hwId || '').split('\\')[1] || '';
         const trust = lastInputs[i.hwId] === undefined || lastInputs[i.hwId] === i.value;
-        return { ...resolveRef(i), value: i.value, skipIfRead: trust ? expectedRead(model, i.value) : null };
+        return { ...resolveRef(i), value: i.value, skipIfRead: trust ? expectedRead(model, i.value, config.inputProfiles) : null };
       }),
     };
     let res, applyError = null;
@@ -211,8 +211,8 @@ function refreshTray() {
 function showWindow() {
   if (win) { win.show(); win.focus(); return; }
   win = new BrowserWindow({
-    width: 1080, height: 720, minWidth: 820, minHeight: 560,
-    title: 'Screen Switcher', icon: ICO, autoHideMenuBar: true, backgroundColor: '#0f1115',
+    width: 1240, height: 800, minWidth: 1180, minHeight: 600,
+    title: 'Screen Switcher', icon: ICO, autoHideMenuBar: true, backgroundColor: '#1e1e1e',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   // Sans ça, la barre des tâches affiche l'icône d'electron.exe (lancement depuis le code source)
@@ -228,7 +228,7 @@ function showWindow() {
 function publicState() {
   return {
     scenes: config.scenes, monitorNames: config.monitorNames, settings: config.settings, devicePaths: config.devicePaths || {},
-    lastSceneId: config.lastSceneId, shortcutStatus,
+    lastSceneId: config.lastSceneId, shortcutStatus, inputProfiles: config.inputProfiles || {},
     autostart: isAutostart(),
   };
 }
@@ -314,6 +314,38 @@ ipcMain.handle('test-input', async (_e, ref, value) => {
   await native.setInput(resolveRef(ref), value);
   config.lastInputs = { ...(config.lastInputs || {}), [ref.hwId]: value };
   saveConfig();
+  return true;
+});
+
+// ---------------------------------------------------------------- assistant des sources
+// envoie un code, attend que l'écran bascule et renvoie la source lue (-1 si l'écran ne répond pas)
+ipcMain.handle('ddc-probe', async (_e, ref, value, waitMs = 2500) => {
+  const r = await native.probe(resolveRef(ref), value, waitMs);
+  config.lastInputs = { ...(config.lastInputs || {}), [ref.hwId]: value };
+  saveConfig();
+  return r;
+});
+// profil trouvé par l'assistant pour un modèle (null = revenir aux codes standard / intégrés)
+ipcMain.handle('save-input-profile', (_e, model, profile) => {
+  const all = { ...(config.inputProfiles || {}) };
+  if (profile) all[model] = profile; else delete all[model];
+  config.inputProfiles = all;
+  saveConfig();
+  return publicState();
+});
+// La fenêtre est-elle sur l'écran testé ? (rectangle en pixels physiques, comme les positions des écrans)
+const physRect = (r) => screen.dipToScreenRect(win, r);
+const overlap = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+ipcMain.handle('window-on-monitor', (_e, mon) => !!win && overlap(physRect(win.getBounds()), mon));
+// déplace la fenêtre sur un autre écran que celui testé
+ipcMain.handle('window-move-away', (_e, mon) => {
+  if (!win) return false;
+  const target = screen.getAllDisplays().find((d) => !overlap(screen.dipToScreenRect(null, d.bounds), mon));
+  if (!target) return false;
+  if (win.isMaximized()) win.unmaximize();
+  const wa = target.workArea, b = win.getBounds();
+  const w = Math.min(b.width, wa.width), h = Math.min(b.height, wa.height);
+  win.setBounds({ x: Math.round(wa.x + (wa.width - w) / 2), y: Math.round(wa.y + (wa.height - h) / 2), width: w, height: h });
   return true;
 });
 

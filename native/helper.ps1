@@ -105,6 +105,15 @@ while ($true) {
                 [ScreenSwitcher.Display]::SetInput((Resolve-Gdi $req), [int]$req.value)
                 Send @{ id = $req.id; ok = $true }
             }
+            'probe' {
+                # assistant des sources : envoie un code, laisse l'écran basculer, puis lit la source annoncée (-1 = pas de réponse)
+                $gdi = Resolve-Gdi $req
+                [ScreenSwitcher.Display]::SetInput($gdi, [int]$req.value)
+                Start-Sleep -Milliseconds ([int]$req.waitMs)
+                $read = -1
+                try { $read = [ScreenSwitcher.Display]::GetInput($gdi) } catch { }
+                Send @{ id = $req.id; ok = $true; result = @{ read = $read } }
+            }
             'ping' { Send @{ id = $req.id; ok = $true } }
             default { Send @{ id = $req.id; ok = $false; error = "Commande inconnue : $($req.cmd)" } }
         }

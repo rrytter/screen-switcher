@@ -59,6 +59,7 @@ class Native {
   list(ddc = true) { return this.call('list', { ddc }); }
   apply(scene) { return this.call('apply', { scene }); }
   setInput(ref, value) { return this.call('input', { ...ref, value }); }
+  probe(ref, value, waitMs) { return this.call('probe', { ...ref, value, waitMs }); }
   stop() { if (this.proc) this.proc.kill(); }
 }
 

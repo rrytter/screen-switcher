@@ -13,13 +13,18 @@
     },
   };
 
+  // Profil d'un modèle : celui trouvé par l'assistant (config.inputProfiles) prime sur MODEL_PROFILES
+  function profileFor(model, learned) {
+    return (learned && learned[model]) || MODEL_PROFILES[model] || null;
+  }
+
   // Valeur que l'écran annonce une fois sur la source demandée (norme : identique au code écrit)
-  function expectedRead(model, value) {
-    const p = MODEL_PROFILES[model];
+  function expectedRead(model, value, learned) {
+    const p = profileFor(model, learned);
     return p && p.readBack && p.readBack[value] !== undefined ? p.readBack[value] : value;
   }
 
-  const api = { MODEL_PROFILES, expectedRead };
+  const api = { MODEL_PROFILES, profileFor, expectedRead };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else Object.assign(root, api);
 })(typeof window !== 'undefined' ? window : globalThis);

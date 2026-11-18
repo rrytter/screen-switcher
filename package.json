@@ -1,13 +1,14 @@
 {
   "name": "screen-switcher",
   "productName": "Screen Switcher",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.3",
   "description": "Scènes d'affichage : écran principal, sortie audio et source d'entrée des écrans (DDC/CI), avec raccourcis globaux.",
   "main": "src/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis --publish never"
+    "dist": "electron-builder --win nsis --publish never",
+    "icons": "electron scripts/render-icons.cjs"
   },
   "devDependencies": {
     "electron": "45.3.3",

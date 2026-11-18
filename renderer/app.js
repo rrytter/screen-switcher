@@ -6,7 +6,8 @@ const INPUTS = [
 ];
 // MODEL_PROFILES vient de src/profiles.js (chargé avant ce script)
 const toHex = (v) => `0x${v.toString(16).toUpperCase().padStart(2, '0')}`;
-const profileOf = (m) => (m && MODEL_PROFILES[m.model]) || null;
+// profil trouvé par l'assistant (state.inputProfiles) sinon profil intégré (src/profiles.js)
+const profileOf = (m) => (m && profileFor(m.model, state && state.inputProfiles)) || null;
 const inputsFor = (m) => (profileOf(m) ? profileOf(m).inputs : INPUTS);
 const inputName = (v, m) => (inputsFor(m).find(([c]) => c === v) || [, toHex(v)])[1];
 const STATUS_TEXT = {
@@ -40,13 +41,14 @@ function renderList() {
     const li = document.createElement('li');
     li.className = (s.id === selId ? 'sel ' : '') + (s.id === state.lastSceneId ? 'active' : '');
     li.title = s.id === state.lastSceneId ? 'Dernière scène appliquée' : '';
-    const dot = document.createElement('span'); dot.className = 'dot';
+    const tile = document.createElement('span'); tile.className = 'tile';
+    tile.innerHTML = SceneIcons.tileSvg(SceneIcons.lookOf(s), { size: 34 });
     const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name || '(sans nom)';
-    li.append(dot, nm);
+    li.append(tile, nm);
     if (s.shortcut) {
       const k = document.createElement('span');
       k.className = 'kbd ' + (state.shortcutStatus[s.id] || '');
-      k.textContent = prettyKeys(s.shortcut);
+      k.textContent = prettyKeys(s.shortcut).replace(/ \+ /g, '+');
       li.append(k);
     }
     // réordonner par glisser-déposer
@@ -102,19 +104,38 @@ function render() {
   if (!draft) return;
 
   $('#f-name').value = draft.name || '';
-  $('#f-shortcut').textContent = capturing ? 'Tape la combinaison… (Échap pour annuler)' : (prettyKeys(draft.shortcut) || 'Aucun — cliquer pour définir');
+  renderLook();
+  $('#f-shortcut').textContent = capturing ? 'Tapez la combinaison… (Échap pour annuler)' : (prettyKeys(draft.shortcut) || 'Aucun — cliquer pour définir');
   $('#f-shortcut').classList.toggle('capturing', capturing);
   const saved = state.scenes.find((x) => x.id === draft.id);
   const st = $('#shortcut-status');
   // on n'affiche que les problèmes (raccourci pris, en double…) ou un changement non enregistré
   const status = saved && saved.shortcut === draft.shortcut ? STATUS_TEXT[state.shortcutStatus[draft.id]] : null;
   if (status) { st.textContent = status[0]; st.className = status[1]; }
-  else { st.textContent = draft.shortcut && (!saved || saved.shortcut !== draft.shortcut) ? 'Enregistre pour activer' : ''; st.className = 'muted'; }
+  else { st.textContent = draft.shortcut && (!saved || saved.shortcut !== draft.shortcut) ? 'Enregistrer pour activer' : ''; st.className = 'muted'; }
 
   renderLaunch(saved);
   renderLayout();
   renderMonitors();
   renderAudio();
+}
+
+// icône de la scène (aussi utilisée par le plugin Stream Deck)
+function fillSelect(sel, names, autoLabel) {
+  if (sel.options.length) return;
+  sel.append(new Option(autoLabel, 'auto'));
+  for (const [k, v] of Object.entries(names)) sel.append(new Option(v, k));
+}
+function renderLook() {
+  const guess = SceneIcons.lookOf({ name: draft.name });
+  fillSelect($('#f-icon'), SceneIcons.GLYPH_NAMES, 'Automatique');
+  fillSelect($('#f-color'), SceneIcons.COLOR_NAMES, 'Automatique');
+  $('#f-icon').options[0].text = `Automatique (${SceneIcons.GLYPH_NAMES[guess.glyph] || 'Écran'})`;
+  $('#f-icon').value = draft.icon || 'auto';
+  const autoColor = SceneIcons.lookOf({ name: draft.name, icon: draft.icon }).color;
+  $('#f-color').options[0].text = `Automatique (${SceneIcons.COLOR_NAMES[autoColor]})`;
+  $('#f-color').value = draft.color || 'auto';
+  $('#f-tile').innerHTML = SceneIcons.tileSvg(SceneIcons.lookOf(draft), { size: 44 });
 }
 
 // lien / commande pour lancer la scène depuis un lanceur externe (basés sur le nom enregistré)
@@ -228,7 +249,7 @@ function renderMonitors() {
     const r = document.createElement('input'); r.type = 'radio'; r.name = 'primary'; r.value = m.devicePath || m.hwId;
     r.checked = sameScreen(draft.primary, m);
     r.disabled = willBeOff;
-    r.title = willBeOff ? 'Active l\'écran pour pouvoir le rendre principal' : '';
+    r.title = willBeOff ? 'Activez l\'écran pour pouvoir le rendre principal' : '';
     r.onchange = () => { draft.primary = { hwId: m.hwId || undefined, device: m.device || undefined, devicePath: m.devicePath || undefined }; renderLayout(); };
     lab.append(r, document.createTextNode(m.primary ? ' (actuel)' : ''));
     c2.append(lab);
@@ -246,7 +267,7 @@ function renderMonitors() {
       for (const [c, n] of INPUTS) sel.append(new Option(n, c));
       sel.append(new Option('Autre (code hexa)…', 'custom'));
       sel.value = '';
-      sel.title = 'L\'écran n\'a pas répondu à la détection. Active DDC/CI dans son menu, puis « Actualiser la détection » ; tu peux quand même essayer un code avec « Tester ».';
+      sel.title = 'L\'écran n\'a pas répondu à la détection. Activez DDC/CI dans son menu, puis « Actualiser la détection » ; vous pouvez quand même essayer un code avec « Tester ».';
     } else if (profileOf(m)) {
       sel.append(new Option('Ne pas changer', ''));
       for (const [c, n] of profileOf(m).inputs) sel.append(new Option(`${n} (${toHex(c)})`, c));
@@ -269,7 +290,7 @@ function renderMonitors() {
     hex.className = 'hex hidden'; hex.placeholder = '0x12';
     // « Tester » : envoie le code tout de suite pour trouver les bons codes d'un écran
     const test = document.createElement('button');
-    test.className = 'btn ghost small'; test.textContent = 'Tester';
+    test.className = 'btn ghost small'; test.innerHTML = uiIcon('zap') + 'Tester';
     test.title = 'Envoie ce code à l\'écran maintenant (pour vérifier quelle source il sélectionne)';
     const refreshTest = () => { test.disabled = !!m.inactive || !(draft.inputs || []).some((i) => i.hwId === m.hwId); };
     test.onclick = async () => {
@@ -291,7 +312,13 @@ function renderMonitors() {
       if (Number.isFinite(v) && v > 0 && v < 256) { setInput(m, v); test.disabled = false; } else toast('Code invalide (ex. 0x12)', true);
     };
     refreshTest();
-    cell.append(sel, hex, test);
+    // assistant : vérifie les codes standard / cherche ceux de ce modèle
+    const wiz = document.createElement('button');
+    wiz.className = 'btn ghost small icon-only'; wiz.innerHTML = uiIcon('wand');
+    wiz.title = 'Assistant : vérifier ou trouver les codes des entrées de cet écran';
+    wiz.disabled = !!m.inactive;
+    wiz.onclick = () => Wizard.open(m);
+    cell.append(sel, hex, test, wiz);
     c3.append(cell);
 
     tr.append(c1, cD, c2, c3);
@@ -347,7 +374,7 @@ window.addEventListener('keydown', (e) => {
   if (e.altKey) mods.push('Alt');
   if (e.shiftKey) mods.push('Shift');
   if (e.metaKey) mods.push('Super');
-  if (!mods.length && !/^F\d+$/.test(key)) { toast('Ajoute Ctrl, Alt, Maj ou Win (sauf pour les touches F1–F24)', true); return; }
+  if (!mods.length && !/^F\d+$/.test(key)) { toast('Ajoutez Ctrl, Alt, Maj ou Win (sauf pour les touches F1–F24)', true); return; }
   draft.shortcut = [...mods, key].join('+');
   stopCapture();
 }, true);
@@ -392,7 +419,9 @@ $('#btn-delete').onclick = async () => {
 };
 $('#f-shortcut').onclick = () => (capturing ? stopCapture() : startCapture());
 $('#btn-clear-shortcut').onclick = () => { draft.shortcut = ''; render(); };
-$('#f-name').oninput = (e) => { draft.name = e.target.value; };
+$('#f-name').oninput = (e) => { draft.name = e.target.value; renderLook(); };
+$('#f-icon').onchange = (e) => { draft.icon = e.target.value === 'auto' ? undefined : e.target.value; renderLook(); };
+$('#f-color').onchange = (e) => { draft.color = e.target.value === 'auto' ? undefined : e.target.value; renderLook(); };
 $('#f-audio').onchange = (e) => {
   const a = hw.audio.find((x) => x.id === e.target.value);
   draft.audio = a ? { id: a.id, name: a.name } : null;
@@ -418,6 +447,7 @@ window.api.onHardware((h) => {
 });
 
 // ------------------------------------------------------------ init
+applyUiIcons();
 (async () => {
   state = await window.api.state();
   selId = state.scenes[0] ? state.scenes[0].id : null;

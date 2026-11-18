@@ -1,0 +1,45 @@
+{
+	"Name": "Screen Switcher",
+	"Version": "1.0.0.0",
+	"Author": "rrytter",
+	"Description": "Applique les scènes de Screen Switcher (écrans, écran principal, audio, sources d'entrée) et affiche la scène active.",
+	"Category": "Screen Switcher",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"Icon": "imgs/plugin/marketplace",
+	"URL": "https://github.com/rrytter/screen-switcher",
+	"CodePath": "bin/plugin.js",
+	"SDKVersion": 3,
+	"Software": {
+		"MinimumVersion": "7.1"
+	},
+	"OS": [
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "24",
+		"Debug": "enabled"
+	},
+	"UUID": "com.rrytter.screenswitcher",
+	"Actions": [
+		{
+			"Name": "Scène",
+			"UUID": "com.rrytter.screenswitcher.scene",
+			"Icon": "imgs/actions/scene/icon",
+			"Tooltip": "Applique une scène Screen Switcher. La touche de la scène active est mise en évidence.",
+			"PropertyInspectorPath": "ui/scene.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"SupportedInMultiActions": true,
+			"States": [
+				{
+					"Image": "imgs/actions/scene/key",
+					"ShowTitle": false
+				}
+			]
+		}
+	]
+}

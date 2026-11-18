@@ -17,7 +17,7 @@ Les commandes inutiles sont évitées (écran déjà principal, déjà actif/ina
 2. Le lancer. L'installateur n'est pas signé : Windows SmartScreen affiche « Windows a protégé votre ordinateur » → **Informations complémentaires** → **Exécuter quand même**.
 3. L'installation se fait pour l'utilisateur courant (pas de droits admin), dans `%LOCALAPPDATA%\Programs\Screen Switcher`. Désinstallation : Paramètres → Applications.
 
-L'app vit dans la zone de notification (icône bleue). Fermer la fenêtre ne la quitte pas ; « Quitter » est dans le menu de l'icône. Cocher **« Lancer au démarrage de Windows »** pour que les raccourcis marchent dès l'ouverture de session.
+L'app vit dans la zone de notification (icône violette). Fermer la fenêtre ne la quitte pas ; « Quitter » est dans le menu de l'icône. Cocher **« Lancer au démarrage de Windows »** pour que les raccourcis marchent dès l'ouverture de session.
 
 **Prérequis** : Windows 10/11, PowerShell 5.1 (intégré à Windows). Sur un **PC d'entreprise verrouillé** (AppLocker, PowerShell en mode restreint), le moteur de l'app peut être bloqué : l'installer plutôt sur le PC perso, auquel les écrans sont reliés.
 
@@ -27,6 +27,8 @@ L'app vit dans la zone de notification (icône bleue). Fermer la fenêtre ne la 
 2. **Raccourci clavier** : cliquer sur le champ puis taper la combinaison (ex. Ctrl+Alt+F1).
 3. **Écrans** : pour chaque écran, choisir s'il faut l'activer/désactiver, s'il devient principal, et sa source d'entrée.
 4. **Sortie audio** si besoin, puis **Enregistrer et appliquer**.
+
+**Apparence** : icône et couleur de la scène (devinées d'après le nom par défaut), reprises par le plugin Stream Deck.
 
 Glisser-déposer dans la liste pour réordonner les scènes.
 
@@ -42,7 +44,9 @@ Glisser-déposer dans la liste pour réordonner les scènes.
 
 ### Trouver les bons codes de son écran
 
-Dans une scène, choisir une source dans la liste puis cliquer **Tester** : le code est envoyé immédiatement. Si l'écran ne bascule pas sur la bonne entrée, essayer les autres valeurs, ou « Autre (code hexa)… ». Le PC garde la main même quand l'écran affiche une autre source : on peut toujours revenir avec le code qui mène au PC.
+**Assistant** (bouton baguette à droite de « Tester ») : indiquer les entrées branchées et celle de ce PC, puis l'assistant envoie les codes standard et demande ce que l'écran affiche (touches 1–9, Espace = rien n'a changé, N = écran noir, A = une autre entrée). Si les codes standard ne marchent pas, il balaye 0x01–0x1F, puis des codes constructeurs (0x90–0x92, 0xC0–0xC2, 0xD0–0xD2), puis 0x20–0xFF en dernier recours. Les codes trouvés sont enregistrés pour ce modèle d'écran ; « Copier le rapport » permet de les partager dans une issue. Garder la fenêtre sur un autre écran que celui testé (l'assistant propose de la déplacer).
+
+À la main : dans une scène, choisir une source dans la liste puis cliquer **Tester** : le code est envoyé immédiatement. Si l'écran ne bascule pas sur la bonne entrée, essayer les autres valeurs, ou « Autre (code hexa)… ». Le PC garde la main même quand l'écran affiche une autre source : on peut toujours revenir avec le code qui mène au PC.
 
 Codes standard (norme MCCS) : `0x0F` DisplayPort 1 · `0x10` DisplayPort 2 · `0x11` HDMI 1 · `0x12` HDMI 2 · `0x1B` USB-C · `0x03` DVI · `0x01` VGA. Les entrées marquées ✓ sont celles que l'écran annonce (liste souvent incomplète ou fausse).
 
@@ -62,6 +66,26 @@ Chaque scène peut aussi se lancer sans raccourci clavier, depuis n'importe quel
 Les touches programmables d'un clavier ou d'une souris peuvent aussi simplement envoyer le raccourci clavier de la scène.
 
 La scène est retrouvée par son nom (casse et accents ignorés) : renommer une scène casse les touches qui l'appellent.
+
+### Plugin Stream Deck
+
+`streamdeck/plugin/` contient un plugin Elgato Stream Deck (logiciel 7.1+) avec une action **Scène** :
+
+- liste déroulante des scènes (lues dans la config de l'app, à jour en direct) ; la touche suit les renommages ;
+- image générée avec le nom de la scène, une icône devinée d'après le nom (écran, projecteur, laptop, console…) et une couleur, modifiables ;
+- les touches des scènes **inactives** sont assombries (option) ; ça suit aussi les scènes lancées au clavier ;
+- ⚠ sur la touche si la scène n'a pas été appliquée en 15 s (rien quand tout va bien).
+
+```bash
+cd streamdeck/plugin
+npm install
+npm run build      # compile dans com.rrytter.screenswitcher.sdPlugin/bin
+npm run link       # installe le plugin en lien vers ce dossier (dev), puis redémarrer le logiciel Stream Deck
+npm run pack       # fichier .streamDeckPlugin à double-cliquer, dans dist/
+npm run images     # régénère les PNG du plugin depuis assets/*.svg
+```
+
+Des icônes statiques pour l'action « Site web » sont aussi dans `streamdeck/icons/`.
 
 ## Développement
 

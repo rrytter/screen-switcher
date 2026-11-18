@@ -9,8 +9,9 @@
 <body>
   <aside class="sidebar">
     <header class="brand"><img src="../assets/icon-64.png" alt=""><span>Screen Switcher</span></header>
+    <div class="side-title">Scènes</div>
     <ul id="scene-list" class="scene-list"></ul>
-    <button id="btn-new" class="btn ghost full">+ Nouvelle scène</button>
+    <button id="btn-new" class="btn ghost full" data-icon="plus">Nouvelle scène</button>
     <footer class="settings">
       <label class="check"><input type="checkbox" id="opt-autostart"> Lancer au démarrage de Windows</label>
       <label class="check"><input type="checkbox" id="opt-notify"> Notification à chaque scène</label>
@@ -18,37 +19,48 @@
   </aside>
 
   <main id="editor" class="editor">
-    <div id="empty" class="empty">Sélectionne ou crée une scène.</div>
+    <div id="empty" class="empty">Sélectionnez ou créez une scène.</div>
 
     <div id="form" class="form hidden">
       <div class="row head">
-        <input id="f-name" class="name" placeholder="Nom de la scène" maxlength="40">
+        <div class="title">
+          <div id="f-tile" class="tile big"></div>
+          <input id="f-name" class="name" placeholder="Nom de la scène" maxlength="40">
+        </div>
         <div class="actions">
-          <button id="btn-delete" class="btn danger">Supprimer</button>
-          <button id="btn-save" class="btn">Enregistrer</button>
-          <button id="btn-apply" class="btn primary">Enregistrer et appliquer</button>
+          <button id="btn-delete" class="btn danger icon-only" data-icon="trash" title="Supprimer la scène"></button>
+          <button id="btn-save" class="btn" data-icon="save">Enregistrer</button>
+          <button id="btn-apply" class="btn primary" data-icon="play">Enregistrer et appliquer</button>
         </div>
       </div>
 
       <section class="card">
-        <h2>Raccourci clavier</h2>
+        <h2 data-icon="palette">Apparence</h2>
+        <div class="row">
+          <label class="field"><span class="muted">Icône</span><select id="f-icon"></select></label>
+          <label class="field"><span class="muted">Couleur</span><select id="f-color"></select></label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 data-icon="keyboard">Raccourci clavier</h2>
         <div class="row">
           <button id="f-shortcut" class="shortcut" title="Cliquer puis taper la combinaison">—</button>
-          <button id="btn-clear-shortcut" class="btn ghost small">Effacer</button>
+          <button id="btn-clear-shortcut" class="btn ghost small" data-icon="x">Effacer</button>
           <span id="shortcut-status" class="muted"></span>
         </div>
         <div class="row launch">
           <span class="muted">Lanceur :</span>
           <code id="scene-url" class="code"></code>
-          <button id="btn-copy-url" class="btn ghost small" title="Lien qui applique la scène (pour un lanceur qui ouvre des liens)">Copier le lien</button>
-          <button id="btn-copy-cmd" class="btn ghost small" title="Commande qui applique la scène (pour un lanceur qui exécute un programme)">Copier la commande</button>
+          <button id="btn-copy-url" class="btn ghost small" data-icon="link" title="Lien qui applique la scène (pour un lanceur qui ouvre des liens)">Copier le lien</button>
+          <button id="btn-copy-cmd" class="btn ghost small" data-icon="terminal" title="Commande qui applique la scène (pour un lanceur qui exécute un programme)">Copier la commande</button>
         </div>
       </section>
 
       <section class="card">
         <div class="row between">
-          <h2>Écrans</h2>
-          <button id="btn-refresh" class="btn ghost small">Actualiser la détection</button>
+          <h2 data-icon="monitor">Écrans</h2>
+          <button id="btn-refresh" class="btn ghost small" data-icon="refresh">Actualiser la détection</button>
         </div>
         <div id="layout" class="layout"></div>
         <table class="monitors">
@@ -59,14 +71,18 @@
       </section>
 
       <section class="card">
-        <h2>Sortie audio par défaut</h2>
+        <h2 data-icon="speaker">Sortie audio par défaut</h2>
         <select id="f-audio" class="wide"></select>
       </section>
     </div>
   </main>
 
+  <div id="wizard" class="modal hidden"><div class="dialog"></div></div>
   <div id="toast" class="toast hidden"></div>
   <script src="../src/profiles.js"></script>
+  <script src="../src/scene-icons.js"></script>
+  <script src="ui-icons.js"></script>
   <script src="app.js"></script>
+  <script src="wizard.js"></script>
 </body>
 </html>

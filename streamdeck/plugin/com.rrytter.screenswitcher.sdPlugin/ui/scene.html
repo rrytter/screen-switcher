@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+	<head>
+		<meta charset="utf-8" />
+		<title>Scène Screen Switcher</title>
+		<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+	</head>
+	<body>
+		<sdpi-item label="Scène">
+			<sdpi-select setting="sceneId" datasource="getScenes" hot-reload loading="Lecture des scènes…" placeholder="Choisir une scène"></sdpi-select>
+		</sdpi-item>
+		<sdpi-item label="Icône">
+			<sdpi-select setting="icon" default="auto">
+				<option value="auto">Comme dans Screen Switcher</option>
+				<option value="monitor">Écran</option>
+				<option value="dual">Deux écrans</option>
+				<option value="monitor-laptop">Écran + laptop</option>
+				<option value="laptop">Laptop</option>
+				<option value="projector">Projecteur</option>
+				<option value="tv">Télé</option>
+				<option value="gamepad">Console</option>
+				<option value="headphones">Casque</option>
+				<option value="moon">Nuit</option>
+			</sdpi-select>
+		</sdpi-item>
+		<sdpi-item label="Couleur">
+			<sdpi-select setting="color" default="auto">
+				<option value="auto">Comme dans Screen Switcher</option>
+				<option value="blue">Bleu</option>
+				<option value="teal">Vert d'eau</option>
+				<option value="green">Vert</option>
+				<option value="amber">Orange</option>
+				<option value="red">Rouge</option>
+				<option value="pink">Rose</option>
+				<option value="violet">Violet</option>
+				<option value="slate">Gris</option>
+			</sdpi-select>
+		</sdpi-item>
+		<sdpi-item label="Scène active">
+			<sdpi-checkbox setting="highlight" default="true" label="Assombrir les scènes inactives"></sdpi-checkbox>
+		</sdpi-item>
+	</body>
+</html>
