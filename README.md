@@ -15,7 +15,7 @@ Les commandes inutiles sont évitées (écran déjà principal, déjà actif/ina
 
 1. Télécharger `Screen-Switcher-Setup-<version>.exe` dans les [Releases](../../releases).
 2. Le lancer. L'installateur n'est pas signé : Windows SmartScreen affiche « Windows a protégé votre ordinateur » → **Informations complémentaires** → **Exécuter quand même**.
-3. L'installation se fait pour l'utilisateur courant (pas de droits admin), dans `%LOCALAPPDATA%\Programs\Screen Switcher`. Désinstallation : Paramètres → Applications.
+3. L'installation se fait pour l'utilisateur courant (pas de droits admin), dans `%LOCALAPPDATA%\Programs\screen-switcher`, sans choix du dossier. Désinstallation : Paramètres → Applications.
 
 L'app vit dans la zone de notification (icône violette). Fermer la fenêtre ne la quitte pas ; « Quitter » est dans le menu de l'icône. Cocher **« Lancer au démarrage de Windows »** pour que les raccourcis marchent dès l'ouverture de session.
 
