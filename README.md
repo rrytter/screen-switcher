@@ -13,6 +13,11 @@ Unneeded commands are skipped (display already primary, already on/off, input or
 
 The interface is in English or French, following the Windows language (can be changed in **Settings**).
 
+![Scene editor](docs/screenshots/editor.png)
+
+<p align="center"><img src="docs/screenshots/stream-deck-keys.png" alt="Scenes on a Stream Deck Mini: the active scene is bright, the others are dimmed" width="380"></p>
+<p align="center"><sub>Optional Stream Deck plugin: one key per scene, the active scene stands out.</sub></p>
+
 ## Installation
 
 1. Download `Screen-Switcher-Setup-<version>.exe` from the [Releases](../../releases).
@@ -45,6 +50,8 @@ Primary display, enabling/disabling and audio go through Windows and work with *
 - many monitors **don't use the standard codes** (see below).
 
 ### Finding your monitor's codes
+
+<p align="center"><img src="docs/screenshots/input-wizard.png" alt="Input wizard: select the connected inputs, then the wizard checks the codes" width="560"></p>
 
 **Wizard** (wand button next to “Test”): select the connected inputs and the one used by this PC; the wizard sends the standard codes and asks what the monitor shows (keys 1–9, Space = nothing changed, N = black screen, A = another input). If the standard codes don't work, it scans 0x01–0x1F, then vendor codes (0x90–0x92, 0xC0–0xC2, 0xD0–0xD2), then 0x20–0xFF as a last resort. The codes found are saved for that monitor model; “Copy report” lets you share them in an issue. Keep the window on a display other than the one being tested (the wizard offers to move it).
 
