@@ -1,4 +1,4 @@
-// Pont vers le helper PowerShell persistant (native/helper.ps1).
+// Bridge to the persistent PowerShell helper (native/helper.ps1).
 const { spawn } = require('child_process');
 const path = require('path');
 const readline = require('readline');
@@ -29,14 +29,14 @@ class Native {
         if (!p) return;
         this.pending.delete(msg.id);
         if (msg.ok) { p.resolve(msg.result); return; }
-        const err = new Error(msg.error || 'Erreur inconnue');
-        err.result = msg.result;   // résultat partiel (ex. modes d'écran mémorisés malgré une erreur audio)
+        const err = new Error(msg.error || 'Unknown error');
+        err.result = msg.result;   // partial result (e.g. display modes stored despite an audio error)
         p.reject(err);
       });
       let stderr = '';
       this.proc.stderr.on('data', (d) => { stderr += d.toString(); });
       this.proc.on('exit', (code) => {
-        const err = new Error(`Helper PowerShell arrêté (code ${code}) ${stderr.trim()}`);
+        const err = new Error(`PowerShell helper stopped (code ${code}) ${stderr.trim()}`);
         for (const p of this.pending.values()) p.reject(err);
         this.pending.clear();
         this.proc = null;

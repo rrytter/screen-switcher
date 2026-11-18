@@ -1,8 +1,8 @@
 {
 	"Name": "Screen Switcher",
-	"Version": "1.0.0.0",
+	"Version": "1.1.0.0",
 	"Author": "rrytter",
-	"Description": "Applique les scènes de Screen Switcher (écrans, écran principal, audio, sources d'entrée) et affiche la scène active.",
+	"Description": "Applies Screen Switcher scenes (displays, primary display, audio, input sources) and shows the active scene.",
 	"Category": "Screen Switcher",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"Icon": "imgs/plugin/marketplace",
@@ -25,10 +25,10 @@
 	"UUID": "com.rrytter.screenswitcher",
 	"Actions": [
 		{
-			"Name": "Scène",
+			"Name": "Scene",
 			"UUID": "com.rrytter.screenswitcher.scene",
 			"Icon": "imgs/actions/scene/icon",
-			"Tooltip": "Applique une scène Screen Switcher. La touche de la scène active est mise en évidence.",
+			"Tooltip": "Applies a Screen Switcher scene. Inactive scenes are dimmed.",
 			"PropertyInspectorPath": "ui/scene.html",
 			"Controllers": [
 				"Keypad"

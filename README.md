@@ -1,109 +1,122 @@
 # Screen Switcher
 
-Petit outil Windows qui applique des **scènes** d'affichage d'un raccourci clavier, d'un clic dans la zone de notification ou depuis un lanceur externe (pavé de touches programmables, script…). Pensé pour le télétravail : un PC perso et un laptop pro qui partagent les mêmes écrans, un projecteur, une console…
+A small Windows tool that applies display **scenes** from a keyboard shortcut, a click in the notification area, or an external launcher (programmable keypad, script…). Built for working from home: a personal PC and a work laptop sharing the same monitors, a projector, a console…
 
-Une scène peut :
+A scene can:
 
-- **activer / désactiver un écran** (ex. couper la sortie HDMI du projecteur) ; à la réactivation, résolution, fréquence et position sont restaurées ;
-- choisir l'**écran principal** (disposition et fréquences conservées) ;
-- choisir la **sortie audio par défaut** ;
-- changer la **source d'entrée de chaque écran** (DisplayPort / HDMI…) par DDC/CI, pour passer les écrans du PC au laptop sans toucher aux boutons des écrans.
+- **enable / disable a display** (e.g. turn off the projector's HDMI output); when re-enabled, resolution, refresh rate and position are restored;
+- set the **primary display** (layout and refresh rates are kept);
+- set the **default audio output**;
+- switch the **input source of each monitor** (DisplayPort / HDMI…) over DDC/CI, to move your monitors from the PC to the laptop without touching their buttons.
 
-Les commandes inutiles sont évitées (écran déjà principal, déjà actif/inactif, source ou audio déjà en place).
+Unneeded commands are skipped (display already primary, already on/off, input or audio already set).
+
+The interface is in English or French, following the Windows language (can be changed in **Settings**).
 
 ## Installation
 
-1. Télécharger `Screen-Switcher-Setup-<version>.exe` dans les [Releases](../../releases).
-2. Le lancer. L'installateur n'est pas signé : Windows SmartScreen affiche « Windows a protégé votre ordinateur » → **Informations complémentaires** → **Exécuter quand même**.
-3. L'installation se fait pour l'utilisateur courant (pas de droits admin), dans `%LOCALAPPDATA%\Programs\screen-switcher`, sans choix du dossier. Désinstallation : Paramètres → Applications.
+1. Download `Screen-Switcher-Setup-<version>.exe` from the [Releases](../../releases).
+2. Run it. The installer is not signed: Windows SmartScreen shows “Windows protected your PC” → **More info** → **Run anyway**.
+3. It installs for the current user (no admin rights) in `%LOCALAPPDATA%\Programs\screen-switcher`, without asking for a folder. Uninstall: Settings → Apps.
 
-L'app vit dans la zone de notification (icône violette). Fermer la fenêtre ne la quitte pas ; « Quitter » est dans le menu de l'icône. Cocher **« Lancer au démarrage de Windows »** pour que les raccourcis marchent dès l'ouverture de session.
+The app lives in the notification area (purple icon). Closing the window does not quit it; “Quit” is in the icon's menu. Check **“Start with Windows”** so shortcuts work as soon as you sign in.
 
-**Prérequis** : Windows 10/11, PowerShell 5.1 (intégré à Windows). Sur un **PC d'entreprise verrouillé** (AppLocker, PowerShell en mode restreint), le moteur de l'app peut être bloqué : l'installer plutôt sur le PC perso, auquel les écrans sont reliés.
+**Requirements**: Windows 10/11, PowerShell 5.1 (built into Windows). On a **locked-down work PC** (AppLocker, PowerShell constrained mode), the app's engine may be blocked: install it on the personal PC the monitors are connected to instead.
 
-## Premiers pas
+## Getting started
 
-1. **+ Nouvelle scène**, lui donner un nom.
-2. **Raccourci clavier** : cliquer sur le champ puis taper la combinaison (ex. Ctrl+Alt+F1).
-3. **Écrans** : pour chaque écran, choisir s'il faut l'activer/désactiver, s'il devient principal, et sa source d'entrée.
-4. **Sortie audio** si besoin, puis **Enregistrer et appliquer**.
+1. **New scene**, give it a name.
+2. **Keyboard shortcut**: click the field, then press the combination (e.g. Ctrl+Alt+F1).
+3. **Displays**: for each display, choose whether to enable/disable it, make it primary, and its input source.
+4. **Audio output** if needed, then **Apply** (saves and applies the scene).
 
-**Apparence** : icône et couleur de la scène (devinées d'après le nom par défaut), reprises par le plugin Stream Deck.
+**Appearance**: the scene's icon and color (guessed from its name by default), also used by the Stream Deck plugin.
 
-Glisser-déposer dans la liste pour réordonner les scènes.
+Drag and drop in the list to reorder scenes.
 
-## Compatibilité des écrans (source d'entrée)
+## Monitor compatibility (input source)
 
-Écran principal, activation/désactivation et audio passent par Windows et marchent avec **tous les écrans**. Le changement de **source d'entrée** dépend de l'écran :
+Primary display, enabling/disabling and audio go through Windows and work with **every display**. Switching the **input source** depends on the monitor:
 
-- il faut que **DDC/CI soit activé** dans le menu (OSD) de l'écran (souvent activé par défaut) ;
-- les écrans de laptop, les télés et les projecteurs ne le gèrent généralement pas ;
-- certains docks / hubs (notamment **DisplayLink**) ne transmettent pas le DDC/CI ; un câble direct DP/HDMI/USB-C vers le PC fonctionne ;
-- couper la **détection automatique de source** dans le menu de l'écran, sinon il peut rebasculer seul dès qu'un appareil s'allume ;
-- beaucoup d'écrans **n'utilisent pas les codes standard** (voir ci-dessous).
+- **DDC/CI must be enabled** in the monitor's menu (OSD) — often on by default;
+- laptop screens, TVs and projectors usually don't support it;
+- some docks / hubs (notably **DisplayLink**) don't pass DDC/CI through; a direct DP/HDMI/USB-C cable to the PC works;
+- turn off **automatic input detection** in the monitor's menu, otherwise it may switch back on its own as soon as a device wakes up;
+- many monitors **don't use the standard codes** (see below).
 
-### Trouver les bons codes de son écran
+### Finding your monitor's codes
 
-**Assistant** (bouton baguette à droite de « Tester ») : indiquer les entrées branchées et celle de ce PC, puis l'assistant envoie les codes standard et demande ce que l'écran affiche (touches 1–9, Espace = rien n'a changé, N = écran noir, A = une autre entrée). Si les codes standard ne marchent pas, il balaye 0x01–0x1F, puis des codes constructeurs (0x90–0x92, 0xC0–0xC2, 0xD0–0xD2), puis 0x20–0xFF en dernier recours. Les codes trouvés sont enregistrés pour ce modèle d'écran ; « Copier le rapport » permet de les partager dans une issue. Garder la fenêtre sur un autre écran que celui testé (l'assistant propose de la déplacer).
+**Wizard** (wand button next to “Test”): select the connected inputs and the one used by this PC; the wizard sends the standard codes and asks what the monitor shows (keys 1–9, Space = nothing changed, N = black screen, A = another input). If the standard codes don't work, it scans 0x01–0x1F, then vendor codes (0x90–0x92, 0xC0–0xC2, 0xD0–0xD2), then 0x20–0xFF as a last resort. The codes found are saved for that monitor model; “Copy report” lets you share them in an issue. Keep the window on a display other than the one being tested (the wizard offers to move it).
 
-À la main : dans une scène, choisir une source dans la liste puis cliquer **Tester** : le code est envoyé immédiatement. Si l'écran ne bascule pas sur la bonne entrée, essayer les autres valeurs, ou « Autre (code hexa)… ». Le PC garde la main même quand l'écran affiche une autre source : on peut toujours revenir avec le code qui mène au PC.
+Manually: in a scene, pick an input in the list and click **Test**: the code is sent immediately. If the monitor doesn't switch to the right input, try other values, or “Other (hex code)…”. The PC stays in control even when the monitor shows another input: you can always come back with the code that leads to the PC.
 
-Codes standard (norme MCCS) : `0x0F` DisplayPort 1 · `0x10` DisplayPort 2 · `0x11` HDMI 1 · `0x12` HDMI 2 · `0x1B` USB-C · `0x03` DVI · `0x01` VGA. Les entrées marquées ✓ sont celles que l'écran annonce (liste souvent incomplète ou fausse).
+Standard codes (MCCS): `0x0F` DisplayPort 1 · `0x10` DisplayPort 2 · `0x11` HDMI 1 · `0x12` HDMI 2 · `0x1B` USB-C · `0x03` DVI · `0x01` VGA. Inputs marked ✓ are the ones the monitor reports (list often incomplete or wrong).
 
-Un écran non standard dont on a trouvé les codes peut être ajouté à `MODEL_PROFILES` dans `src/profiles.js` (le code modèle, ex. `ACR080E`, est affiché sous le nom de l'écran). Les retours sont bienvenus via les issues.
+A non-standard monitor whose codes you found can be added to `MODEL_PROFILES` in `src/profiles.js` (the model code, e.g. `ACR080E`, is shown under the display name). Feedback is welcome through issues.
 
-**Acer ED270U P (ACR080E)**, testé : écriture `0x11`/`0x12` → DisplayPort ; `0x01`/`0x0F`/`0x10` → port **HDMI 2** ; le port **HDMI 1 n'est joignable par aucun code**. Brancher l'appareil à piloter (laptop) sur HDMI 2.
+**Acer ED270U P (ACR080E)**, tested: writing `0x11`/`0x12` → DisplayPort; `0x01`/`0x0F`/`0x10` → **HDMI 2** port; the **HDMI 1 port can't be reached with any code**. Connect the device to control (laptop) to HDMI 2.
 
-## Lanceurs
+## Launchers
 
-Chaque scène peut aussi se lancer sans raccourci clavier, depuis n'importe quel outil capable d'ouvrir un lien ou d'exécuter un programme (boutons « Copier le lien » / « Copier la commande » dans l'éditeur) :
+Each scene can also be triggered without a keyboard shortcut, from any tool that can open a link or run a program (“Copy link” / “Copy command” buttons in the editor):
 
-| Type de lanceur | Valeur |
+| Launcher type | Value |
 |---|---|
-| ouvre un lien | `screenswitcher://scene/Projecteur` |
-| exécute un programme | `"…\Screen Switcher.exe" --scene "Projecteur"` |
+| opens a link | `screenswitcher://scene/Projector` |
+| runs a program | `"…\Screen Switcher.exe" --scene "Projector"` |
 
-Les touches programmables d'un clavier ou d'une souris peuvent aussi simplement envoyer le raccourci clavier de la scène.
+Programmable keys on a keyboard or mouse can also simply send the scene's keyboard shortcut.
 
-La scène est retrouvée par son nom (casse et accents ignorés) : renommer une scène casse les touches qui l'appellent.
+The scene is found by name (case and accents ignored): renaming a scene breaks the keys that call it.
 
-### Plugin Stream Deck
+### Stream Deck plugin
 
-`streamdeck/plugin/` contient un plugin Elgato Stream Deck (logiciel 7.1+) avec une action **Scène** :
+`streamdeck/plugin/` contains an Elgato Stream Deck plugin (software 7.1+) with a **Scene** action:
 
-- liste déroulante des scènes (lues dans la config de l'app, à jour en direct) ; la touche suit les renommages ;
-- image générée avec le nom de la scène, une icône devinée d'après le nom (écran, projecteur, laptop, console…) et une couleur, modifiables ;
-- les touches des scènes **inactives** sont assombries (option) ; ça suit aussi les scènes lancées au clavier ;
-- ⚠ sur la touche si la scène n'a pas été appliquée en 15 s (rien quand tout va bien).
+- drop-down list of scenes (read live from the app's configuration); the key follows renames;
+- generated key image with the scene's name, an icon guessed from the name (display, projector, laptop, console…) and a color, both customizable;
+- keys of **inactive** scenes are dimmed (optional); this also follows scenes triggered from the keyboard;
+- ⚠ on the key if the scene wasn't applied within 15 s (nothing when everything is fine).
+
+The plugin is attached to each release (`.streamDeckPlugin` file, double-click to install).
 
 ```bash
 cd streamdeck/plugin
 npm install
-npm run build      # compile dans com.rrytter.screenswitcher.sdPlugin/bin
-npm run link       # installe le plugin en lien vers ce dossier (dev), puis redémarrer le logiciel Stream Deck
-npm run pack       # fichier .streamDeckPlugin à double-cliquer, dans dist/
-npm run images     # régénère les PNG du plugin depuis assets/*.svg
+npm run build      # builds into com.rrytter.screenswitcher.sdPlugin/bin
+npm run link       # installs the plugin as a link to this folder (dev), then restart the Stream Deck software
+npm run pack       # .streamDeckPlugin file to double-click, in dist/
+npm run images     # regenerates the plugin PNGs from assets/*.svg
 ```
 
-Des icônes statiques pour l'action « Site web » sont aussi dans `streamdeck/icons/`.
+Static icons for the “Website” action are also in `streamdeck/icons/`.
 
-## Développement
+## Development
 
 ```bash
 npm install
-npm start          # depuis le code source
-npm run dist       # installateur dans dist/
+npm start          # from source
+npm run dist       # installer in dist/
+npm run icons      # regenerates the app icons from assets/src/*.svg
 ```
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `src/main.js` | process principal : tray, raccourcis globaux, scènes, config, démarrage auto |
-| `src/native.js` | pont JSON-lignes vers le helper PowerShell persistant |
-| `src/profiles.js` | codes DDC des écrans non standard (partagé main / interface) |
-| `native/helper.ps1` | boucle stdin/stdout, compile `Native.cs` une fois au démarrage |
-| `native/Native.cs` | interop Windows : API CCD, audio `IPolicyConfig`, DDC/CI `dxva2` |
-| `renderer/` | interface d'édition (HTML/CSS/JS sans framework) |
+| `src/main.js` | main process: tray, global shortcuts, scenes, config, autostart, language |
+| `src/native.js` | JSON-lines bridge to the persistent PowerShell helper |
+| `src/profiles.js` | DDC codes of non-standard monitors (shared main / UI) |
+| `src/i18n.js` | English / French translations (shared main / UI / plugin) |
+| `src/scene-icons.js` | scene tiles (shared UI / plugin) |
+| `native/helper.ps1` | stdin/stdout loop, compiles `Native.cs` once at startup |
+| `native/Native.cs` | Windows interop: CCD API, `IPolicyConfig` audio, `dxva2` DDC/CI |
+| `renderer/` | editor UI (HTML/CSS/JS, no framework); `wizard.js` = input wizard |
 
-Configuration : `%APPDATA%\screen-switcher\config.json` (partagée entre la version installée et `npm start`). Voir `CLAUDE.md` pour les détails techniques et les pièges connus.
+Configuration: `%APPDATA%\screen-switcher\config.json` (shared by the installed version and `npm start`). See `CLAUDE.md` for technical details and known pitfalls.
 
-Version de dev et version installée enregistrent toutes deux le raccourci du menu Démarrer, le lien `screenswitcher://` et l'entrée de démarrage auto : c'est la dernière lancée qui gagne. N'en garder qu'une au quotidien.
+The dev version and the installed version both register the Start menu shortcut, the `screenswitcher://` link and the autostart entry: the last one launched wins. Keep only one for daily use.
+
+## License
+
+Copyright (C) 2026 Romain Rytter
+
+This program is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License](LICENSE) as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed without any warranty.

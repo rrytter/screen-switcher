@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
@@ -7,78 +7,88 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- texts: data-i18n (content), data-i18n-title, data-i18n-placeholder → src/i18n.js -->
   <aside class="sidebar">
     <header class="brand"><img src="../assets/icon-64.png" alt=""><span>Screen Switcher</span></header>
-    <div class="side-title">Scènes</div>
+    <div class="side-title" data-i18n="side.scenes">Scenes</div>
     <ul id="scene-list" class="scene-list"></ul>
-    <button id="btn-new" class="btn ghost full" data-icon="plus">Nouvelle scène</button>
+    <button id="btn-new" class="btn ghost full" data-icon="plus" data-i18n="btn.new">New scene</button>
     <footer class="settings">
-      <label class="check"><input type="checkbox" id="opt-autostart"> Lancer au démarrage de Windows</label>
-      <label class="check"><input type="checkbox" id="opt-notify"> Notification à chaque scène</label>
+      <button id="btn-settings" class="btn ghost full" data-icon="settings" data-i18n="btn.settings">Settings</button>
     </footer>
   </aside>
 
   <main id="editor" class="editor">
-    <div id="empty" class="empty">Sélectionnez ou créez une scène.</div>
+    <div id="empty" class="empty" data-i18n="empty">Select or create a scene.</div>
 
     <div id="form" class="form hidden">
       <div class="row head">
         <div class="title">
           <div id="f-tile" class="tile big"></div>
-          <input id="f-name" class="name" placeholder="Nom de la scène" maxlength="40">
+          <input id="f-name" class="name" data-i18n-placeholder="name.placeholder" maxlength="40">
         </div>
         <div class="actions">
-          <button id="btn-delete" class="btn danger icon-only" data-icon="trash" title="Supprimer la scène"></button>
-          <button id="btn-save" class="btn" data-icon="save">Enregistrer</button>
-          <button id="btn-apply" class="btn primary" data-icon="play">Enregistrer et appliquer</button>
+          <button id="btn-delete" class="btn danger icon-only" data-icon="trash" data-i18n-title="btn.delete"></button>
+          <button id="btn-save" class="btn" data-icon="save" data-i18n="btn.save">Save</button>
+          <button id="btn-apply" class="btn primary" data-icon="play" data-i18n="btn.apply">Apply</button>
         </div>
       </div>
 
       <section class="card">
-        <h2 data-icon="palette">Apparence</h2>
+        <h2 data-icon="palette" data-i18n="card.look">Appearance</h2>
         <div class="row">
-          <label class="field"><span class="muted">Icône</span><select id="f-icon"></select></label>
-          <label class="field"><span class="muted">Couleur</span><select id="f-color"></select></label>
+          <label class="field"><span class="muted" data-i18n="look.icon">Icon</span><select id="f-icon"></select></label>
+          <label class="field"><span class="muted" data-i18n="look.color">Color</span><select id="f-color"></select></label>
         </div>
       </section>
 
       <section class="card">
-        <h2 data-icon="keyboard">Raccourci clavier</h2>
+        <h2 data-icon="keyboard" data-i18n="card.shortcut">Keyboard shortcut</h2>
         <div class="row">
-          <button id="f-shortcut" class="shortcut" title="Cliquer puis taper la combinaison">—</button>
-          <button id="btn-clear-shortcut" class="btn ghost small" data-icon="x">Effacer</button>
+          <button id="f-shortcut" class="shortcut" data-i18n-title="shortcut.title">—</button>
+          <button id="btn-clear-shortcut" class="btn ghost small" data-icon="x" data-i18n="btn.clear">Clear</button>
           <span id="shortcut-status" class="muted"></span>
         </div>
         <div class="row launch">
-          <span class="muted">Lanceur :</span>
+          <span class="muted" data-i18n="launch.label">Launcher:</span>
           <code id="scene-url" class="code"></code>
-          <button id="btn-copy-url" class="btn ghost small" data-icon="link" title="Lien qui applique la scène (pour un lanceur qui ouvre des liens)">Copier le lien</button>
-          <button id="btn-copy-cmd" class="btn ghost small" data-icon="terminal" title="Commande qui applique la scène (pour un lanceur qui exécute un programme)">Copier la commande</button>
+          <button id="btn-copy-url" class="btn ghost small" data-icon="link" data-i18n="btn.copyUrl" data-i18n-title="btn.copyUrl.title">Copy link</button>
+          <button id="btn-copy-cmd" class="btn ghost small" data-icon="terminal" data-i18n="btn.copyCmd" data-i18n-title="btn.copyCmd.title">Copy command</button>
         </div>
       </section>
 
       <section class="card">
         <div class="row between">
-          <h2 data-icon="monitor">Écrans</h2>
-          <button id="btn-refresh" class="btn ghost small" data-icon="refresh">Actualiser la détection</button>
+          <h2 data-icon="monitor" data-i18n="card.displays">Displays</h2>
+          <button id="btn-refresh" class="btn ghost small" data-icon="refresh" data-i18n="btn.refresh">Refresh detection</button>
         </div>
         <div id="layout" class="layout"></div>
         <table class="monitors">
-          <thead><tr><th>Écran</th><th>Affichage</th><th>Principal</th><th>Source d'entrée (DDC/CI)</th></tr></thead>
+          <thead><tr><th data-i18n="th.screen">Display</th><th data-i18n="th.display">State</th><th data-i18n="th.primary">Primary</th><th data-i18n="th.input">Input source (DDC/CI)</th></tr></thead>
           <tbody id="monitor-rows"></tbody>
-          <tfoot><tr><td></td><td></td><td><label class="radio"><input type="radio" name="primary" value=""> Ne pas changer</label></td><td></td></tr></tfoot>
+          <tfoot><tr><td></td><td></td><td><label class="radio"><input type="radio" name="primary" value=""> <span data-i18n="noChange">Don't change</span></label></td><td></td></tr></tfoot>
         </table>
       </section>
 
       <section class="card">
-        <h2 data-icon="speaker">Sortie audio par défaut</h2>
+        <h2 data-icon="speaker" data-i18n="card.audio">Default audio output</h2>
         <select id="f-audio" class="wide"></select>
       </section>
     </div>
   </main>
 
   <div id="wizard" class="modal hidden"><div class="dialog"></div></div>
+  <div id="settings" class="modal hidden">
+    <div class="dialog narrow">
+      <h3 data-icon="settings" data-i18n="settings.title">Settings</h3>
+      <label class="field"><span class="muted" data-i18n="settings.language">Language</span><select id="opt-lang"></select></label>
+      <label class="check"><input type="checkbox" id="opt-autostart"> <span data-i18n="opt.autostart">Start with Windows</span></label>
+      <label class="check"><input type="checkbox" id="opt-notify"> <span data-i18n="opt.notify">Notify on each scene</span></label>
+      <div class="wz-foot"><span class="grow"></span><button id="settings-close" class="btn primary" data-i18n="settings.close">Close</button></div>
+    </div>
+  </div>
   <div id="toast" class="toast hidden"></div>
+  <script src="../src/i18n.js"></script>
   <script src="../src/profiles.js"></script>
   <script src="../src/scene-icons.js"></script>
   <script src="ui-icons.js"></script>

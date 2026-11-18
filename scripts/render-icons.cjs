@@ -1,9 +1,9 @@
-// Régénère assets/icon-*.png et assets/icon.ico depuis assets/src/*.svg
+// Regenerates assets/icon-*.png and assets/icon.ico from assets/src/*.svg
 // npx electron scripts/render-icons.cjs
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs'), path = require('path');
 const A = path.join(__dirname, '..', 'assets');
-// 16 et 24 px : dessin simplifié (lisible dans la zone de notification)
+// 16 to 32 px: simplified drawing (readable in the notification area)
 const SIZES = { 16: 'icon-small', 20: 'icon-small', 24: 'icon-small', 32: 'icon-small', 48: 'icon', 64: 'icon', 128: 'icon', 256: 'icon' };
 const KEEP_PNG = [16, 32, 48, 64, 256];
 app.disableHardwareAcceleration();
@@ -19,7 +19,7 @@ app.whenReady().then(async () => {
     pngs[n] = img.toPNG();
     if (KEEP_PNG.includes(n)) fs.writeFileSync(path.join(A, `icon-${n}.png`), pngs[n]);
   }
-  // .ico : en-tête + répertoire + images PNG (accepté par Windows Vista+)
+  // .ico: header + directory + PNG images (accepted by Windows Vista+)
   const sizes = Object.keys(pngs).map(Number).sort((a, b) => a - b);
   const head = Buffer.alloc(6 + 16 * sizes.length);
   head.writeUInt16LE(0, 0); head.writeUInt16LE(1, 2); head.writeUInt16LE(sizes.length, 4);
@@ -32,6 +32,6 @@ app.whenReady().then(async () => {
     off += d.length;
   });
   fs.writeFileSync(path.join(A, 'icon.ico'), Buffer.concat([head, ...sizes.map((n) => pngs[n])]));
-  console.log('icônes :', sizes.join(', '));
+  console.log('icons:', sizes.join(', '));
   app.quit();
 });

@@ -1,4 +1,4 @@
-// Types pour le plugin Stream Deck (TypeScript) ; l'app utilise scene-icons.js directement.
+// Types for the Stream Deck plugin (TypeScript); the app uses scene-icons.js directly.
 export type Look = { glyph: string; color: string };
 export const GLYPHS: Record<string, string>;
 export const GLYPH_NAMES: Record<string, string>;

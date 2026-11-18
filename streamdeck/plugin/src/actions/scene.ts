@@ -12,24 +12,25 @@ import { execFile } from "node:child_process";
 
 import { getConfig, onConfigChange } from "../config";
 import { keyImage, lookOf } from "../icons";
+import { detect, setLang, t } from "../../../../src/i18n.js";
 
 type Settings = {
 	sceneId?: string;
-	icon?: string; // "auto" (= réglage de la scène dans l'app) ou une clé de GLYPHS
-	color?: string; // "auto" ou une clé de COLORS
-	highlight?: boolean; // assombrir les scènes inactives
+	icon?: string; // "auto" (= scene setting in the app) or a GLYPHS key
+	color?: string; // "auto" or a COLORS key
+	highlight?: boolean; // dim inactive scenes
 };
 
-/** Délai max entre l'appui et l'enregistrement de la scène par l'app (activer le projecteur prend quelques s). */
+/** Max delay between the key press and the app saving the scene (enabling a projector takes a few s). */
 const CONFIRM_TIMEOUT = 15_000;
 
-/** Ouvre screenswitcher://scene/<id> : Windows le transmet à l'app (qu'elle tourne déjà ou non). */
+/** Opens screenswitcher://scene/<id>: Windows hands it to the app (running or not). */
 function launch(sceneId: string): Promise<void> {
 	const url = `screenswitcher://scene/${encodeURIComponent(sceneId)}`;
 	return new Promise((resolve) => {
 		execFile("rundll32.exe", ["url.dll,FileProtocolHandler", url], (err) => {
 			if (!err) return resolve();
-			streamDeck.logger.warn(`rundll32 a échoué (${err.message}), repli sur openUrl`);
+			streamDeck.logger.warn(`rundll32 failed (${err.message}), falling back to openUrl`);
 			streamDeck.system.openUrl(url).finally(resolve);
 		});
 	});
@@ -37,7 +38,7 @@ function launch(sceneId: string): Promise<void> {
 
 @action({ UUID: "com.rrytter.screenswitcher.scene" })
 export class SceneAction extends SingletonAction<Settings> {
-	/** Touches en attente de confirmation : id de l'action → scène demandée. */
+	/** Keys waiting for confirmation: action id → requested scene. */
 	#pending = new Map<string, { sceneId: string; timer: NodeJS.Timeout }>();
 
 	constructor() {
@@ -63,7 +64,7 @@ export class SceneAction extends SingletonAction<Settings> {
 
 		const id = ev.action.id;
 		clearTimeout(this.#pending.get(id)?.timer);
-		// L'app réécrit sa config après chaque scène appliquée : sans ce signal, alerte ⚠ sur la touche.
+		// The app rewrites its config after each applied scene: without that signal, ⚠ alert on the key.
 		const timer = setTimeout(() => {
 			this.#pending.delete(id);
 			void ev.action.showAlert();
@@ -72,7 +73,7 @@ export class SceneAction extends SingletonAction<Settings> {
 		await launch(sceneId);
 	}
 
-	/** L'inspecteur (sdpi-select datasource="getScenes") demande la liste des scènes. */
+	/** The inspector (sdpi-select datasource="getScenes") asks for the scene list. */
 	override onSendToPlugin(ev: SendToPluginEvent<JsonValue, Settings>): Promise<void> | void {
 		const p = ev.payload as { event?: string } | null;
 		if (p?.event === "getScenes") return this.#pushScenes();
@@ -90,7 +91,7 @@ export class SceneAction extends SingletonAction<Settings> {
 		});
 	}
 
-	/** Scène appliquée : on annule l'alerte, sans rien afficher (le résultat attendu se voit déjà). */
+	/** Scene applied: cancel the alert, show nothing (the expected result is already visible). */
 	#confirmPending(): void {
 		const last = getConfig()?.lastSceneId;
 		for (const [id, p] of this.#pending) {
@@ -106,11 +107,13 @@ export class SceneAction extends SingletonAction<Settings> {
 
 	#render(a: KeyAction<Settings>, s: Settings): Promise<void> {
 		const cfg = getConfig();
+		// language: the app setting if set, otherwise the Stream Deck software language
+		setLang(cfg?.language && cfg.language !== "system" ? cfg.language : detect(streamDeck.info?.application?.language));
 		const unknown = { glyph: "unknown", color: "slate" };
-		if (!cfg) return a.setImage(keyImage(unknown, "App absente"));
+		if (!cfg) return a.setImage(keyImage(unknown, t("key.noApp")));
 		const scene = cfg.scenes.find((x) => x.id === s.sceneId);
-		if (!scene) return a.setImage(keyImage(unknown, s.sceneId ? "Supprimée" : "Choisir…"));
-		// « auto » sur la touche = icône/couleur choisies dans l'app (ou devinées d'après le nom)
+		if (!scene) return a.setImage(keyImage(unknown, s.sceneId ? t("key.deleted") : t("key.choose")));
+		// "auto" on the key = icon/color chosen in the app (or guessed from the name)
 		const dim = s.highlight !== false && cfg.lastSceneId !== scene.id;
 		return a.setImage(keyImage(lookOf(scene, s), scene.name, dim));
 	}

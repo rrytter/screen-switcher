@@ -1,0 +1,10 @@
+{
+	"Name": "Screen Switcher",
+	"Description": "Applique les scènes de Screen Switcher (écrans, écran principal, audio, sources d'entrée) et affiche la scène active.",
+	"Category": "Screen Switcher",
+	"com.rrytter.screenswitcher.scene": {
+		"Name": "Scène",
+		"Tooltip": "Applique une scène Screen Switcher. Les scènes inactives sont assombries."
+	},
+	"Localization": {}
+}

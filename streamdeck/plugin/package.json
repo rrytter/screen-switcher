@@ -1,7 +1,8 @@
 {
   "name": "screen-switcher-streamdeck",
   "private": true,
-  "description": "Plugin Stream Deck pour Screen Switcher",
+  "license": "GPL-3.0-or-later",
+  "description": "Stream Deck plugin for Screen Switcher",
   "type": "module",
   "scripts": {
     "build": "rollup -c",

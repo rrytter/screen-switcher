@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Scène telle qu'enregistrée par Screen Switcher (seuls les champs utiles au plugin). */
+/** Scene as saved by Screen Switcher (only the fields the plugin needs). */
 export type Scene = { id: string; name: string; shortcut?: string; icon?: string; color?: string };
-export type AppConfig = { scenes: Scene[]; lastSceneId: string | null };
+export type AppConfig = { scenes: Scene[]; lastSceneId: string | null; language?: string };
 
 const DIR = path.join(process.env.APPDATA ?? "", "screen-switcher");
 const FILE = path.join(DIR, "config.json");
@@ -17,7 +17,7 @@ function read(): AppConfig | null {
 		const scenes: Scene[] = Array.isArray(raw.scenes)
 			? raw.scenes.map((s: Scene) => ({ id: s.id, name: s.name, shortcut: s.shortcut, icon: s.icon, color: s.color }))
 			: [];
-		return { scenes, lastSceneId: raw.lastSceneId ?? null };
+		return { scenes, lastSceneId: raw.lastSceneId ?? null, language: raw.settings?.language };
 	} catch {
 		return null;
 	}
@@ -27,8 +27,8 @@ let timer: NodeJS.Timeout | undefined;
 let retries = 0;
 function reload(): void {
 	clearTimeout(timer);
-	// L'app réécrit le fichier d'un bloc : on laisse passer la rafale d'événements,
-	// et on réessaie si le JSON est lu à moitié écrit.
+	// The app rewrites the file in one go: let the burst of events pass,
+	// and retry if the JSON is read half-written.
 	timer = setTimeout(() => {
 		const next = read();
 		if (!next && fs.existsSync(FILE) && retries++ < 10) return reload();
@@ -39,7 +39,7 @@ function reload(): void {
 	}, 150);
 }
 
-/** Configuration courante de Screen Switcher (null si l'app n'a jamais été lancée). */
+/** Current Screen Switcher configuration (null if the app has never been launched). */
 export function getConfig(): AppConfig | null {
 	return current;
 }
@@ -48,7 +48,7 @@ export function onConfigChange(listener: (cfg: AppConfig | null) => void): void 
 	listeners.add(listener);
 }
 
-/** Lit la config et surveille son dossier (le fichier peut ne pas encore exister). */
+/** Reads the config and watches its folder (the file may not exist yet). */
 export function watchConfig(): void {
 	current = read();
 	const start = (): void => {
@@ -58,7 +58,7 @@ export function watchConfig(): void {
 			});
 			reload();
 		} catch {
-			setTimeout(start, 5000); // dossier absent : l'app n'a pas encore été lancée
+			setTimeout(start, 5000); // folder missing: the app has not been launched yet
 		}
 	};
 	start();

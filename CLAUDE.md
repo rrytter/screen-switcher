@@ -1,81 +1,87 @@
 # CLAUDE.md
 
-Screen Switcher : petite app Electron (Windows uniquement) qui applique des **scènes** d'affichage depuis des raccourcis globaux ou l'icône de la zone de notification. Une scène peut : activer/désactiver des écrans, choisir l'écran principal, la sortie audio par défaut et la source d'entrée des écrans (DDC/CI).
+Screen Switcher: a small Electron app (Windows only) that applies display **scenes** from global shortcuts, the notification-area icon or external launchers. A scene can enable/disable displays and set the primary display, the default audio output and the monitors' input source (DDC/CI).
 
-Interface, commentaires et messages en **français**.
+**Language rules.** Everything code-related is in **English**: code, comments, error messages, README, this file, commit messages. French exists only as an in-app localization. User-facing texts go through `src/i18n.js` (`t(key, params)`, a UMD module shared by main / renderer / plugin; `data-i18n`, `data-i18n-title`, `data-i18n-placeholder` in index.html). English is the default; French is used when Windows is in French. The effective language comes from `settings.language` (system / en / fr, Settings window), applied by `applyLang()` in main and passed to the renderer as `state.lang` (the window reloads when it changes); the plugin follows it for its key labels. Add every new text in both languages; French texts use the formal *vous*.
 
-## Commandes
+## Commands
 
 ```bash
 npm install
-npm start          # electron . depuis le code source
-npm run dist       # installateur NSIS (par utilisateur, non signé) dans dist/ ; publier via une release GitHub
-node --check src/main.js renderer/app.js   # pas de tests automatisés ; au minimum vérifier la syntaxe
-npm run icons      # régénère assets/icon-*.png et icon.ico depuis assets/src/*.svg (icon-small.svg pour 16–32 px)
+npm start          # electron . from source
+npm run dist       # NSIS installer (per user, unsigned) in dist/; publish through a GitHub release
+node --check src/main.js renderer/app.js   # no automated tests; at least check syntax
+npm run icons      # regenerates assets/icon-*.png and icon.ico from assets/src/*.svg (icon-small.svg for 16–32 px)
 ```
 
-Après une modification de `src/` ou `native/`, il faut **redémarrer l'app** (le renderer seul se recharge avec Ctrl+R, mais le helper natif et `main.js` non). L'app est mono-instance : tuer d'abord le process existant :
+Test instance separate from the installed app (otherwise the single-instance lock wakes the installed one): `SS_USER_DATA=<folder> electron . --lang=en-US` (`--lang` forces the system language).
+
+After changing `src/` or `native/`, **restart the app** (Ctrl+R reloads only the renderer, not the native helper nor `main.js`). The app is single-instance: kill the running process first:
 
 ```powershell
 Get-Process electron | ? { $_.Path -like '*screen-switcher*' } | Stop-Process -Force
 ```
 
-Les logs utiles sont sur stdout : `[shortcuts] …` (état des raccourcis au démarrage) et `[apply] <scène> {sent, skipped, savedModes}`.
+Useful logs are on stdout: `[shortcuts] …` (shortcut status at startup) and `[apply] <scene> {sent, skipped, savedModes}`.
 
 ## Architecture
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `src/main.js` | process principal : tray, raccourcis (`globalShortcut`), config, application des scènes, démarrage auto, raccourci menu Démarrer |
-| `src/native.js` | pont JSON-lignes (stdin/stdout) vers le helper PowerShell persistant |
-| `src/profiles.js` | codes DDC des écrans non standard ; chargé par `require` (main) **et** `<script>` (renderer) |
-| `src/scene-icons.js` | tuiles des scènes (dessins SVG, couleurs, `lookOf`, `tileSvg`) ; UMD partagé par le renderer **et** le plugin Stream Deck (importé par rollup, types dans `scene-icons.d.ts`) |
-| `src/preload.js` | `window.api` exposé au renderer (contextIsolation) |
-| `native/helper.ps1` | boucle de requêtes ; compile `Native.cs` (Add-Type) une seule fois au démarrage |
-| `native/Native.cs` | interop Windows : API CCD (`QueryDisplayConfig`/`SetDisplayConfig`), audio (`IPolicyConfig`, COM non documenté), DDC/CI (`dxva2`) |
-| `renderer/` | éditeur de scènes (HTML/CSS/JS vanilla, pas de framework ni de bundler) ; thème gris, accent violet ; pictogrammes dans `ui-icons.js` (`data-icon` sur un élément) |
+| `src/main.js` | main process: tray, shortcuts (`globalShortcut`), config, applying scenes, autostart, Start menu shortcut, language |
+| `src/native.js` | JSON-lines bridge (stdin/stdout) to the persistent PowerShell helper |
+| `src/profiles.js` | DDC codes of non-standard monitors; loaded by `require` (main) **and** `<script>` (renderer) |
+| `src/i18n.js` | English / French strings; UMD shared by main, renderer and plugin (types in `i18n.d.ts`) |
+| `src/scene-icons.js` | scene tiles (SVG drawings, colors, `lookOf`, `tileSvg`); UMD shared by the renderer **and** the Stream Deck plugin (imported by rollup, types in `scene-icons.d.ts`) |
+| `src/preload.js` | `window.api` exposed to the renderer (contextIsolation) |
+| `native/helper.ps1` | request loop; compiles `Native.cs` (Add-Type) once at startup |
+| `native/Native.cs` | Windows interop: CCD API (`QueryDisplayConfig`/`SetDisplayConfig`), audio (`IPolicyConfig`, undocumented COM), DDC/CI (`dxva2`) |
+| `renderer/` | scene editor (vanilla HTML/CSS/JS, no framework or bundler); gray theme, purple accent; icons in `ui-icons.js` (`data-icon` on an element); `wizard.js` = input wizard |
 
-Déclencheurs d'une scène : raccourci global, menu du tray, double-clic dans la liste, argument `--scene "<nom>"` ou lien `screenswitcher://scene/<nom>` (protocole enregistré au démarrage ; instance unique → `second-instance` transmet l'argv à l'app déjà lancée). Recherche par id puis par nom normalisé (casse/accents).
+Scene triggers: global shortcut, tray menu, double-click in the list, `--scene "<name>"` argument or `screenswitcher://scene/<name>` link (protocol registered at startup; single instance → `second-instance` forwards argv to the running app). Lookup by id, then by normalized name (case/accents ignored).
 
-Ordre d'application d'une scène (dans `helper.ps1`) : **activer écrans → écran principal → désactiver écrans → audio → sources DDC**. L'audio HDMI d'un écran qui vient d'être activé met ~1–2 s à apparaître : le helper attend.
+Order in which a scene is applied (in `helper.ps1`): **enable displays → primary display → disable displays → audio → DDC inputs**. The HDMI audio of a just-enabled display takes ~1–2 s to appear: the helper waits.
 
-Config utilisateur : `%APPDATA%\screen-switcher\config.json` (scènes, noms d'écrans, `lastInputs`, `displayModes`, `devicePaths`, `inputProfiles`). Ne pas la versionner.
+User config: `%APPDATA%\screen-switcher\config.json` (scenes, display names, `settings`, `lastInputs`, `displayModes`, `devicePaths`, `inputProfiles`). Never commit it.
 
-## Assistant des sources (`renderer/wizard.js`)
+## Input wizard (`renderer/wizard.js`)
 
-Codes standard MCCS pour tout écran sans profil. L'assistant envoie un code (commande helper `probe` : SetInput, attente 2,5 s, GetInput) et l'utilisateur dit ce que l'écran affiche. « Rien n'a changé » est ambigu (code ignoré ou entrée déjà affichée) : revérifié depuis une autre entrée. Résultat = `config.inputProfiles[modèle]` (`inputs`, `readBack`), prioritaire sur `MODEL_PROFILES` via `profileFor()` ; pas de profil si tout est standard. La fenêtre ne doit pas être sur l'écran testé (`window-on-monitor` / `window-move-away`, rectangles en pixels physiques via `screen.dipToScreenRect`).
+Standard MCCS codes are used for any monitor without a profile. The wizard sends a code (helper command `probe`: SetInput, wait 2.5 s, GetInput) and the user says what the monitor shows. "Nothing changed" is ambiguous (code ignored, or input already shown): such codes are re-checked from another input. Result = `config.inputProfiles[model]` (`inputs`, `readBack`, bilingual `note`), which wins over `MODEL_PROFILES` through `profileFor()`; no profile is saved if everything is standard. The window must not sit on the tested display (`window-on-monitor` / `window-move-away`, rectangles in physical pixels via `screen.dipToScreenRect`).
 
-## Identifier les écrans
+## Identifying displays
 
-- `hwId` (`MONITOR\ACR080E\{…}\0003`) : écrans actifs, via `EnumDisplayDevices`.
-- `devicePath` (`\\?\DISPLAY#BNQ4D03#…`) : identifiant CCD stable, **seul disponible pour un écran désactivé** (il n'a plus de `\\.\DISPLAYn`). `config.devicePaths` mémorise hwId → devicePath.
-- `\\.\DISPLAYn` change selon la config : toujours le résoudre au moment d'appliquer (`resolveRef` dans main, `Resolve-Gdi` dans le helper).
+- `hwId` (`MONITOR\ACR080E\{…}\0003`): active displays, via `EnumDisplayDevices`.
+- `devicePath` (`\\?\DISPLAY#BNQ4D03#…`): stable CCD identifier, **the only one available for a disabled display** (it no longer has a `\\.\DISPLAYn`). `config.devicePaths` stores hwId → devicePath.
+- `\\.\DISPLAYn` changes with the configuration: always resolve it when applying (`resolveRef` in main, `Resolve-Gdi` in the helper).
 
-## Plugin Stream Deck (`streamdeck/plugin/`)
+## Stream Deck plugin (`streamdeck/plugin/`)
 
-Projet séparé (TypeScript, SDK `@elgato/streamdeck` v3, rollup, modèle officiel de `@elgato/cli`), UUID `com.rrytter.screenswitcher`. Il ne parle pas à l'app : il **lit et surveille `%APPDATA%\screen-switcher\config.json`** (scènes, `lastSceneId`) et déclenche via `screenswitcher://scene/<id>` (rundll32 `url.dll,FileProtocolHandler`). Pas d'alerte ⚠ si réécriture de la config avec `lastSceneId` égal à la scène demandée : ne pas supprimer le `saveConfig()` après une scène dans main. Images des touches générées en SVG (`src/icons.ts`), envoyées en URL `data:image/svg+xml;base64,…` (un SVG brut est ignoré sans erreur) ; `setImage` est ignoré si l'utilisateur a mis sa propre image. Après `npm run build` : `npx streamdeck restart com.rrytter.screenswitcher` (souvent sans effet constaté : arrêter alors le process `node.exe` dont la ligne de commande contient `rrytter.screenswitcher`, le Stream Deck le relance en 2 s) ; un plugin nouvellement lié n'est détecté qu'au redémarrage du logiciel Stream Deck. Logs : `%APPDATA%\Elgato\StreamDeck\logs\com.rrytter.screenswitcher0.log` et `StreamDeck.log`.
+Separate project (TypeScript, `@elgato/streamdeck` SDK v3, rollup, official `@elgato/cli` template), UUID `com.rrytter.screenswitcher`. It does not talk to the app: it **reads and watches `%APPDATA%\screen-switcher\config.json`** (scenes, `lastSceneId`, `settings.language`) and triggers scenes through `screenswitcher://scene/<id>` (rundll32 `url.dll,FileProtocolHandler`). No ⚠ alert when the config is rewritten with `lastSceneId` equal to the requested scene: don't remove the `saveConfig()` after a scene in main. Key images are generated as SVG (`src/icons.ts`) and sent as a `data:image/svg+xml;base64,…` URL (raw SVG is silently ignored); `setImage` is ignored when the user set a custom image. Manifest strings are English; `fr.json` localizes them. The property inspector (`ui/scene.html`) writes its markup in the system language before the sdpi components load. After `npm run build`: `npx streamdeck restart com.rrytter.screenswitcher` (often has no visible effect: then kill the `node.exe` process whose command line contains `rrytter.screenswitcher`; Stream Deck restarts it within 2 s); a newly linked plugin is only detected when the Stream Deck software restarts. Logs: `%APPDATA%\Elgato\StreamDeck\logs\com.rrytter.screenswitcher0.log` and `StreamDeck.log`.
 
-## App packagée
+## Packaged app
 
-- `native/` et `assets/` sont extraits de l'asar (`asarUnpack`) : PowerShell doit exécuter `helper.ps1` et Windows lire `icon.ico` sur disque. Dans main, passer par `UNPACKED` pour ces chemins.
-- `userData` est forcé sur `%APPDATA%\screen-switcher` (sinon le `productName` « Screen Switcher » changerait le dossier et ferait perdre la config).
-- `appId` electron-builder = AUMID `ScreenSwitcher.App` (raccourci du menu Démarrer, icône, notifications).
-- Tester sans installer : `dist\win-unpacked\Screen Switcher.exe` (elle réenregistre raccourci et protocole sur son exe : relancer `npm start` ensuite).
+- `native/` and `assets/` are extracted from the asar (`asarUnpack`): PowerShell must run `helper.ps1` and Windows must read `icon.ico` from disk. In main, use `UNPACKED` for these paths.
+- `userData` is forced to `%APPDATA%\screen-switcher` (otherwise the "Screen Switcher" `productName` would change the folder and lose the config).
+- electron-builder `appId` = AUMID `ScreenSwitcher.App` (Start menu shortcut, icon, notifications).
+- Install folder: `%LOCALAPPDATA%\Programs\screen-switcher` (one-click per-user NSIS, no folder choice).
+- Testing without installing: `dist\win-unpacked\Screen Switcher.exe` (it re-registers the shortcut and protocol to its own exe: run `npm start` again afterwards).
 
-## Pièges connus (testés à la main, ne pas « corriger »)
+## Known pitfalls (tested by hand, don't "fix")
 
-- **Acer ED270U P (ACR080E) ne suit pas MCCS** pour VCP 0x60 : en écriture `0x11`/`0x12` → DisplayPort, `0x01`/`0x0F`/`0x10` → port HDMI 2, **HDMI 1 injoignable** (0x00–0xFF balayés). En lecture : DP = `0x0F`, HDMI 1 = `0x12`, HDMI 2 = `0x11`. Tout est dans `src/profiles.js` (`readBack`).
-- La source **lue** est peu fiable juste après une bascule (valeur périmée / pas de réponse quelques secondes). On ne saute une commande DDC que si la lecture correspond **et** que `lastInputs` (dernière valeur envoyée par l'app) est identique.
-- `ChangeDisplaySettingsEx` échoue (-1) pour repositionner plusieurs écrans : utiliser l'API CCD.
-- Réactiver un écran avec des modes « invalides » laisse Windows choisir (ex. 60 Hz au lieu des 59,94 Hz voulus pour le projecteur) : à la désactivation on mémorise le chemin + modes exacts (`displayModes`, base64) et on les réutilise.
-- Icône de barre des tâches : lancé depuis le code source, Windows affiche celle d'`electron.exe` sauf si un raccourci du menu Démarrer porte le même AppUserModelID (`ScreenSwitcher.App`) → créé par `ensureStartMenuShortcut()`. Windows met l'icône en cache par AUMID : changer d'AUMID si l'icône reste fausse. Vérifier aussi qu'aucun autre .lnk du menu Démarrer ne porte le même AUMID (un `Electron.lnk` vers l'electron.exe de dev, sans icône, créé pendant le développement, prenait le dessus sur la version installée) ; le cache de la barre des tâches ne se vide qu'au redémarrage de l'Explorateur.
-- Démarrage auto : valeur `Screen Switcher` sous `HKCU\…\Run`, écrite via `reg` (le `getLoginItemSettings` d'Electron ne retrouve une entrée que par l'AUMID).
-- `native/helper.ps1` doit rester en **UTF-8 avec BOM** (Windows PowerShell 5.1 lit sinon les accents en ANSI). `Native.cs` est lu explicitement en UTF-8.
-- En PowerShell, ne pas nommer une fonction `R` (alias de `Invoke-History`).
+- `EnumDisplayDevices(output, 0)` can return a former monitor of that output (e.g. a disabled projector) instead of the connected one: `Display.List` picks the active monitor whose model matches the output's CCD path.
+- **Acer ED270U P (ACR080E) doesn't follow MCCS** for VCP 0x60: writing `0x11`/`0x12` → DisplayPort, `0x01`/`0x0F`/`0x10` → HDMI 2 port, **HDMI 1 unreachable** (0x00–0xFF scanned). Reading: DP = `0x0F`, HDMI 1 = `0x12`, HDMI 2 = `0x11`. Everything is in `src/profiles.js` (`readBack`).
+- The input **read back** is unreliable right after a switch (stale value / no answer for a few seconds). A DDC command is skipped only if the read value matches **and** `lastInputs` (last value sent by the app) is the same.
+- `ChangeDisplaySettingsEx` fails (-1) when repositioning several displays: use the CCD API.
+- Re-enabling a display with "invalid" modes lets Windows choose (e.g. 60 Hz instead of the projector's 59.94 Hz): when disabling, the exact path + modes are stored (`displayModes`, base64) and reused.
+- Taskbar icon: when run from source, Windows shows `electron.exe`'s icon unless a Start menu shortcut carries the same AppUserModelID (`ScreenSwitcher.App`) → created by `ensureStartMenuShortcut()`. Windows caches the icon per AUMID: change the AUMID if the icon stays wrong. Also check that no other Start menu .lnk carries the same AUMID (an icon-less `Electron.lnk` to the dev electron.exe, created during development, won over the installed build); the taskbar cache is only cleared when Explorer restarts.
+- Autostart: `Screen Switcher` value under `HKCU\…\Run`, written via `reg` (Electron's `getLoginItemSettings` only finds an entry by AUMID).
+- `native/helper.ps1` must stay **UTF-8 with BOM** (otherwise Windows PowerShell 5.1 reads non-ASCII characters as ANSI). `Native.cs` is read explicitly as UTF-8.
+- In PowerShell, don't name a function `R` (alias of `Invoke-History`).
+- **When launched from Claude Desktop (an MSIX app), a process runs inside its container**: `%APPDATA%` / HKCU writes are redirected to `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\…`. An app launched that way (`npm start`, `Start-Process`) gets its own config, invisible to the Stream Deck plugin and to the app the user launches. Fine for testing; for real use the user launches the app (Start menu).
 
-## Vérifier un changement
+## Verifying a change
 
-Pas de tests : lancer l'app et vérifier réellement. Les commandes changent l'affichage de l'utilisateur (écran principal, écrans éteints, sources) : prévenir avant de déclencher une scène qui bascule une source (ex. vers le laptop), et revenir à l'état de départ après un test. Pour l'état courant sans l'UI :
+No tests: run the app and check for real. Commands change the user's display setup (primary display, displays turned off, inputs): warn before triggering a scene that switches an input (e.g. to the laptop), and restore the initial state after a test. To see the current state without the UI:
 
 ```powershell
 '{"id":1,"cmd":"list","ddc":false}' | powershell -NoProfile -ExecutionPolicy Bypass -File native\helper.ps1
@@ -83,4 +89,4 @@ Pas de tests : lancer l'app et vérifier réellement. Les commandes changent l'a
 
 ## Git
 
-Repo privé GitHub `rrytter/screen-switcher`. L'e-mail de commit est l'adresse noreply GitHub (config locale du repo) : GitHub refuse les push avec l'adresse privée.
+GitHub repository `rrytter/screen-switcher`. The commit email is the GitHub noreply address (local repo config): GitHub rejects pushes using the private address.

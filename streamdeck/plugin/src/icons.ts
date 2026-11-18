@@ -1,9 +1,9 @@
-/** Images des touches : mêmes tuiles que dans l'app (src/scene-icons.js du projet principal). */
+/** Key images: same tiles as in the app (src/scene-icons.js of the main project). */
 import { lookOf, tileSvg } from "../../../src/scene-icons.js";
 
 export { lookOf };
 
-/** Stream Deck attend une URL data: (le SVG brut est ignoré) ; base64 pour les accents. */
+/** Stream Deck expects a data: URL (raw SVG is ignored); base64 for non-ASCII characters. */
 export function toDataUrl(svg: string): string {
 	return `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`;
 }

@@ -1,10 +1,10 @@
-// Icônes des scènes (tuiles façon touche Stream Deck), partagées par l'interface
-// (<script>), et le plugin Stream Deck (import via rollup).
+// Scene icons (Stream Deck-style key tiles), shared by the UI (<script>)
+// and the Stream Deck plugin (imported through rollup).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.SceneIcons = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  // Dessins en traits blancs, dans un carré 144×144 (zone utile ~ y 20–104, le libellé vient dessous).
+  // White line drawings in a 144×144 square (drawing area ~ y 20–104, the label goes below).
   const GLYPHS = {
     monitor: '<rect x="30" y="20" width="84" height="58" rx="7"/><path d="M72 78v14M52 94h40"/>',
     dual: '<rect x="10" y="28" width="58" height="42" rx="6"/><rect x="76" y="28" width="58" height="42" rx="6"/><path d="M39 70v12M27 86h24M105 70v12M93 86h24"/>',
@@ -18,8 +18,8 @@
     unknown: '<circle cx="72" cy="56" r="34"/><path d="M60 46a12 12 0 1 1 16 11c-3 1-4 4-4 7"/><circle cx="72" cy="76" r="2" fill="#fff"/>',
   };
   const GLYPH_NAMES = {
-    monitor: 'Écran', dual: 'Deux écrans', 'monitor-laptop': 'Écran + laptop', laptop: 'Laptop',
-    projector: 'Projecteur', tv: 'Télé', gamepad: 'Console', headphones: 'Casque', moon: 'Nuit',
+    monitor: 'Display', dual: 'Two displays', 'monitor-laptop': 'Display + laptop', laptop: 'Laptop',
+    projector: 'Projector', tv: 'TV', gamepad: 'Console', headphones: 'Headphones', moon: 'Night',
   };
   const COLORS = {
     blue: ['#3b82f6', '#1e3a8a'], teal: ['#14b8a6', '#134e4a'], green: ['#22c55e', '#14532d'],
@@ -36,7 +36,7 @@
 
   const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-  /** Devine un dessin d'après le nom de la scène. */
+  /** Guesses a drawing from the scene name. */
   function guessGlyph(name) {
     const n = norm(name);
     if (/projec/.test(n)) return 'projector';
@@ -50,9 +50,9 @@
   }
 
   /**
-   * Icône et couleur effectives : choix explicite (hors « auto ») > réglage de la scène > automatique.
+   * Effective icon and color: explicit choice (not "auto") > scene setting > automatic.
    * @param scene { name, icon?, color? }
-   * @param over  { icon?, color? } surcharge (ex. réglages d'une touche Stream Deck)
+   * @param over  { icon?, color? } override (e.g. settings of a Stream Deck key)
    */
   function lookOf(scene, over) {
     const pick = (a, b) => (a && a !== 'auto' ? a : b && b !== 'auto' ? b : null);
@@ -66,16 +66,16 @@
   let seq = 0;
 
   /**
-   * SVG d'une tuile.
+   * SVG of a tile.
    * @param look  { glyph, color }
-   * @param opts  { label?: texte sous le dessin, dim?: assombrir, size?: px }
+   * @param opts  { label?: text under the drawing, dim?: darken, size?: px }
    */
   function tileSvg(look, opts) {
     const o = opts || {};
     const [top, bottom] = COLORS[look.color] || COLORS.blue;
     const id = 'ss' + (++seq).toString(36);
     let text = o.label != null ? String(o.label).trim() : null;
-    // sans libellé, le dessin est recentré verticalement
+    // without a label, the drawing is centered vertically
     const vb = text == null ? '0 -10 144 144' : '0 0 144 144';
     let label = '';
     if (text != null) {

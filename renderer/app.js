@@ -1,49 +1,57 @@
-// Interface d'édition des scènes
+// Scene editor UI
 const $ = (s) => document.querySelector(s);
+// UI language: set by the main process (setting, or Windows language) at startup
+const t = I18n.t;
 const INPUTS = [
   [0x0f, 'DisplayPort 1'], [0x10, 'DisplayPort 2'], [0x11, 'HDMI 1'], [0x12, 'HDMI 2'],
   [0x13, 'HDMI 3'], [0x1b, 'USB-C'], [0x03, 'DVI 1'], [0x01, 'VGA 1'],
 ];
-// MODEL_PROFILES vient de src/profiles.js (chargé avant ce script)
+// MODEL_PROFILES comes from src/profiles.js (loaded before this script)
 const toHex = (v) => `0x${v.toString(16).toUpperCase().padStart(2, '0')}`;
-// profil trouvé par l'assistant (state.inputProfiles) sinon profil intégré (src/profiles.js)
+// profile found by the wizard (state.inputProfiles), else built-in profile (src/profiles.js)
 const profileOf = (m) => (m && profileFor(m.model, state && state.inputProfiles)) || null;
 const inputsFor = (m) => (profileOf(m) ? profileOf(m).inputs : INPUTS);
 const inputName = (v, m) => (inputsFor(m).find(([c]) => c === v) || [, toHex(v)])[1];
 const STATUS_TEXT = {
-  conflict: ['Déjà utilisé par une autre application', 'bad'],
-  duplicate: ['Déjà utilisé par une autre scène', 'bad'],
-  invalid: ['Combinaison non supportée', 'bad'],
+  conflict: () => [t('status.conflict'), 'bad'],
+  duplicate: () => [t('status.duplicate'), 'bad'],
+  invalid: () => [t('status.invalid'), 'bad'],
 };
+const statusText = (st) => (STATUS_TEXT[st] ? STATUS_TEXT[st]() : null);
 
-let state = null;      // état du process principal
+let state = null;      // main process state
 let hw = { monitors: [], audio: [] };
 let selId = null;
-let draft = null;      // copie éditée de la scène sélectionnée
+let draft = null;      // edited copy of the selected scene
 let capturing = false;
 
-// ------------------------------------------------------------ utilitaires
+// ------------------------------------------------------------ helpers
+// static texts of index.html (data-i18n, data-i18n-title, data-i18n-placeholder)
+function applyI18n(root = document) {
+  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of root.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+  for (const el of root.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
+}
 function toast(msg, err = false) {
-  const t = $('#toast');
-  t.textContent = msg; t.className = 'toast' + (err ? ' err' : '');
-  clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.add('hidden'), err ? 6000 : 2500);
+  const el = $('#toast');
+  el.textContent = msg; el.className = 'toast' + (err ? ' err' : '');
+  clearTimeout(toast.h); toast.h = setTimeout(() => el.classList.add('hidden'), err ? 6000 : 2500);
 }
 const prettyKeys = (acc) => (acc || '').replace(/Control/g, 'Ctrl').replace(/\+/g, ' + ');
 const monName = (m) => (m.hwId && state.monitorNames[m.hwId]) || (m.devicePath && state.monitorNames[m.devicePath]) || m.name || m.model;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-// ------------------------------------------------------------ liste
+// ------------------------------------------------------------ list
 function renderList() {
   const ul = $('#scene-list');
   ul.innerHTML = '';
   for (const s of state.scenes) {
     const li = document.createElement('li');
     li.className = (s.id === selId ? 'sel ' : '') + (s.id === state.lastSceneId ? 'active' : '');
-    li.title = s.id === state.lastSceneId ? 'Dernière scène appliquée' : '';
     const tile = document.createElement('span'); tile.className = 'tile';
     tile.innerHTML = SceneIcons.tileSvg(SceneIcons.lookOf(s), { size: 34 });
-    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name || '(sans nom)';
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name || t('unnamed');
     li.append(tile, nm);
     if (s.shortcut) {
       const k = document.createElement('span');
@@ -51,7 +59,7 @@ function renderList() {
       k.textContent = prettyKeys(s.shortcut).replace(/ \+ /g, '+');
       li.append(k);
     }
-    // réordonner par glisser-déposer
+    // reorder by drag and drop
     li.draggable = true;
     li.ondragstart = (e) => { e.dataTransfer.setData('text/plain', s.id); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dragging'); };
     li.ondragend = () => li.classList.remove('dragging');
@@ -94,7 +102,7 @@ function select(id) {
   render();
 }
 
-// ------------------------------------------------------------ éditeur
+// ------------------------------------------------------------ editor
 function render() {
   renderList();
   $('#empty').classList.toggle('hidden', !!draft);
@@ -105,14 +113,14 @@ function render() {
 
   $('#f-name').value = draft.name || '';
   renderLook();
-  $('#f-shortcut').textContent = capturing ? 'Tapez la combinaison… (Échap pour annuler)' : (prettyKeys(draft.shortcut) || 'Aucun — cliquer pour définir');
+  $('#f-shortcut').textContent = capturing ? t('shortcut.capturing') : (prettyKeys(draft.shortcut) || t('shortcut.none'));
   $('#f-shortcut').classList.toggle('capturing', capturing);
   const saved = state.scenes.find((x) => x.id === draft.id);
   const st = $('#shortcut-status');
-  // on n'affiche que les problèmes (raccourci pris, en double…) ou un changement non enregistré
-  const status = saved && saved.shortcut === draft.shortcut ? STATUS_TEXT[state.shortcutStatus[draft.id]] : null;
+  // only show problems (shortcut taken, duplicate…) or an unsaved change
+  const status = saved && saved.shortcut === draft.shortcut ? statusText(state.shortcutStatus[draft.id]) : null;
   if (status) { st.textContent = status[0]; st.className = status[1]; }
-  else { st.textContent = draft.shortcut && (!saved || saved.shortcut !== draft.shortcut) ? 'Enregistrer pour activer' : ''; st.className = 'muted'; }
+  else { st.textContent = draft.shortcut && (!saved || saved.shortcut !== draft.shortcut) ? t('shortcut.saveToActivate') : ''; st.className = 'muted'; }
 
   renderLaunch(saved);
   renderLayout();
@@ -120,25 +128,25 @@ function render() {
   renderAudio();
 }
 
-// icône de la scène (aussi utilisée par le plugin Stream Deck)
-function fillSelect(sel, names, autoLabel) {
+// scene icon (also used by the Stream Deck plugin)
+function fillSelect(sel, keys, prefix) {
   if (sel.options.length) return;
-  sel.append(new Option(autoLabel, 'auto'));
-  for (const [k, v] of Object.entries(names)) sel.append(new Option(v, k));
+  sel.append(new Option(t('look.auto'), 'auto'));
+  for (const k of keys) sel.append(new Option(t(`${prefix}.${k}`), k));
 }
 function renderLook() {
   const guess = SceneIcons.lookOf({ name: draft.name });
-  fillSelect($('#f-icon'), SceneIcons.GLYPH_NAMES, 'Automatique');
-  fillSelect($('#f-color'), SceneIcons.COLOR_NAMES, 'Automatique');
-  $('#f-icon').options[0].text = `Automatique (${SceneIcons.GLYPH_NAMES[guess.glyph] || 'Écran'})`;
+  fillSelect($('#f-icon'), Object.keys(SceneIcons.GLYPH_NAMES), 'glyph');
+  fillSelect($('#f-color'), Object.keys(SceneIcons.COLOR_NAMES), 'color');
+  $('#f-icon').options[0].text = t('look.autoWith', { name: t(`glyph.${guess.glyph}`) });
   $('#f-icon').value = draft.icon || 'auto';
   const autoColor = SceneIcons.lookOf({ name: draft.name, icon: draft.icon }).color;
-  $('#f-color').options[0].text = `Automatique (${SceneIcons.COLOR_NAMES[autoColor]})`;
+  $('#f-color').options[0].text = t('look.autoWith', { name: t(`color.${autoColor}`) });
   $('#f-color').value = draft.color || 'auto';
   $('#f-tile').innerHTML = SceneIcons.tileSvg(SceneIcons.lookOf(draft), { size: 44 });
 }
 
-// lien / commande pour lancer la scène depuis un lanceur externe (basés sur le nom enregistré)
+// link / command to trigger the scene from an external launcher (based on the saved name)
 async function renderLaunch(saved) {
   const show = !!saved;
   document.querySelector('.launch').classList.toggle('hidden', !show);
@@ -151,15 +159,15 @@ async function copyLaunch(kind) {
   if (!saved) return;
   const r = await window.api.sceneCommand(saved.name);
   await window.api.copy(kind === 'url' ? r.url : r.command);
-  toast(kind === 'url' ? 'Lien copié' : 'Commande copiée');
+  toast(kind === 'url' ? t('copied.url') : t('copied.cmd'));
 }
 
-// Écrans actifs + écrans branchés mais désactivés (sans position ni \\.\DISPLAYn)
+// Active displays + connected but disabled displays (no position nor \\.\DISPLAYn)
 function allScreens() {
   const byPath = {};
   for (const [hwId, p] of Object.entries(state.devicePaths || {})) byPath[p] = hwId;
-  const inactive = (hw.targets || []).filter((t) => !t.active)
-    .map((t) => ({ inactive: true, devicePath: t.devicePath, name: t.name, hwId: byPath[t.devicePath] || null, model: (t.devicePath.split('#')[1] || '') }));
+  const inactive = (hw.targets || []).filter((x) => !x.active)
+    .map((x) => ({ inactive: true, devicePath: x.devicePath, name: x.name, hwId: byPath[x.devicePath] || null, model: (x.devicePath.split('#')[1] || '') }));
   return [...hw.monitors, ...inactive];
 }
 const sameScreen = (ref, m) => !!ref && ((ref.hwId && ref.hwId === m.hwId) || (ref.devicePath && ref.devicePath === m.devicePath));
@@ -169,8 +177,11 @@ function renderLayout() {
   const box = $('#layout');
   box.innerHTML = '';
   const active = hw.monitors;
-  if (!active.length) { box.innerHTML = '<div class="empty" style="margin-top:55px">Détection des écrans…</div>'; return; }
-  // les écrans désactivés sont dessinés en pointillés à droite des autres
+  if (!active.length) {
+    const e = document.createElement('div'); e.className = 'empty detecting'; e.textContent = t('layout.detecting');
+    box.append(e); return;
+  }
+  // disabled displays are drawn dashed, to the right of the others
   let maxRight = Math.max(...active.map((m) => m.x + m.width));
   const minY0 = Math.min(...active.map((m) => m.y));
   const boxes = active.map((m) => ({ m, x: m.x, y: m.y, w: m.width, h: m.height }));
@@ -188,15 +199,15 @@ function renderLayout() {
     const inp = off ? null : (draft.inputs || []).find((i) => i.hwId && i.hwId === m.hwId);
     d.className = 'mon' + (off ? ' off' : '') + (setsPrimary || inp || ds !== undefined ? ' changed' : '');
     Object.assign(d.style, { left: offX + (x - minX) * k + 'px', top: offY + (y - minY) * k + 'px', width: w * k - 4 + 'px', height: h * k - 4 + 'px' });
-    const t = document.createElement('div'); t.className = 't'; t.textContent = monName(m);
-    d.append(t);
+    const tt = document.createElement('div'); tt.className = 't'; tt.textContent = monName(m);
+    d.append(tt);
     const tag = (txt, cls) => { const b = document.createElement('div'); b.className = cls; b.textContent = txt; d.append(b); };
-    if (ds === false) tag('Désactivé', 'tag');
-    else if (ds === true && m.inactive) tag('Activé', 'tag');
-    else if (m.inactive) tag('désactivé (inchangé)', 's');
-    if (setsPrimary) tag('Écran principal', 'tag');
-    if (inp) tag(`Source : ${inputName(inp.value, m)}`, 'tag');
-    if (!off && !setsPrimary && !inp && ds === undefined) tag('inchangé', 's');
+    if (ds === false) tag(t('tag.disabled'), 'tag');
+    else if (ds === true && m.inactive) tag(t('tag.enabled'), 'tag');
+    else if (m.inactive) tag(t('tag.offUnchanged'), 's');
+    if (setsPrimary) tag(t('tag.primary'), 'tag');
+    if (inp) tag(t('tag.source', { name: inputName(inp.value, m) }), 'tag');
+    if (!off && !setsPrimary && !inp && ds === undefined) tag(t('tag.unchanged'), 's');
     box.append(d);
   }
 }
@@ -204,7 +215,7 @@ function renderLayout() {
 function setDisplay(m, value) {
   draft.displays = (draft.displays || []).filter((d) => d.devicePath !== m.devicePath);
   if (value !== '') draft.displays.push({ devicePath: m.devicePath, name: monName(m), enabled: value === 'on' });
-  // un écran désactivé ne peut pas être principal
+  // a disabled display cannot be primary
   if (value === 'off' && sameScreen(draft.primary, m)) draft.primary = null;
   renderLayout(); renderMonitors();
 }
@@ -217,7 +228,7 @@ function renderMonitors() {
     const ds = displayState(m);
     const willBeOff = m.inactive ? ds !== true : ds === false;
 
-    // nom modifiable (mémorisé par hwId et par devicePath, pour le retrouver écran désactivé)
+    // editable name (stored by hwId and by devicePath, to find it again while disabled)
     const c1 = document.createElement('td');
     const alias = document.createElement('input');
     alias.className = 'alias'; alias.value = monName(m); alias.title = m.devicePath || m.hwId;
@@ -230,74 +241,75 @@ function renderMonitors() {
       renderLayout();
     };
     const sub = document.createElement('div'); sub.className = 'sub';
-    sub.textContent = m.inactive ? `${m.name || m.model} · désactivé actuellement`
+    sub.textContent = m.inactive ? t('mon.offNow', { name: m.name || m.model })
       : `${m.name || m.model} · ${m.device.replace('\\\\.\\', '')} · ${m.width}×${m.height} ${m.hz} Hz`;
     c1.append(alias, sub);
 
-    // affichage : activé / désactivé
+    // state: enabled / disabled
     const cD = document.createElement('td');
     const dsel = document.createElement('select');
-    dsel.append(new Option('Ne pas changer', ''), new Option('Activé', 'on'), new Option('Désactivé', 'off'));
+    dsel.append(new Option(t('noChange'), ''), new Option(t('tag.enabled'), 'on'), new Option(t('tag.disabled'), 'off'));
     dsel.value = ds === true ? 'on' : ds === false ? 'off' : '';
-    if (!m.devicePath) { dsel.disabled = true; dsel.title = 'Identifiant d\'écran introuvable'; }
+    if (!m.devicePath) { dsel.disabled = true; dsel.title = t('disp.noId'); }
     dsel.onchange = () => setDisplay(m, dsel.value);
     cD.append(dsel);
 
-    // écran principal
+    // primary display
     const c2 = document.createElement('td');
     const lab = document.createElement('label'); lab.className = 'radio';
     const r = document.createElement('input'); r.type = 'radio'; r.name = 'primary'; r.value = m.devicePath || m.hwId;
     r.checked = sameScreen(draft.primary, m);
     r.disabled = willBeOff;
-    r.title = willBeOff ? 'Activez l\'écran pour pouvoir le rendre principal' : '';
+    r.title = willBeOff ? t('primary.enableFirst') : '';
     r.onchange = () => { draft.primary = { hwId: m.hwId || undefined, device: m.device || undefined, devicePath: m.devicePath || undefined }; renderLayout(); };
-    lab.append(r, document.createTextNode(m.primary ? ' (actuel)' : ''));
+    lab.append(r, document.createTextNode(m.primary ? t('primary.current') : ''));
     c2.append(lab);
 
-    // source d'entrée
+    // input source
     const c3 = document.createElement('td');
     const cell = document.createElement('div'); cell.className = 'input-cell';
     const sel = document.createElement('select');
     const cur = (draft.inputs || []).find((i) => i.hwId && i.hwId === m.hwId);
     if (m.inactive) {
-      sel.append(new Option('Écran désactivé', '')); sel.disabled = true;
+      sel.append(new Option(t('input.displayOff'), '')); sel.disabled = true;
     } else if (!m.ddc && !profileOf(m) && !cur) {
-      // aucun écho DDC à la détection (écran sur une autre source, DDC/CI coupé dans son menu, dock qui ne le transmet pas…)
-      sel.append(new Option('DDC/CI non détecté', ''));
+      // no DDC answer during detection (monitor on another input, DDC/CI off in its menu, dock not passing it through…)
+      sel.append(new Option(t('input.noDdc'), ''));
       for (const [c, n] of INPUTS) sel.append(new Option(n, c));
-      sel.append(new Option('Autre (code hexa)…', 'custom'));
+      sel.append(new Option(t('input.custom'), 'custom'));
       sel.value = '';
-      sel.title = 'L\'écran n\'a pas répondu à la détection. Activez DDC/CI dans son menu, puis « Actualiser la détection » ; vous pouvez quand même essayer un code avec « Tester ».';
+      sel.title = t('input.noDdc.title');
     } else if (profileOf(m)) {
-      sel.append(new Option('Ne pas changer', ''));
+      sel.append(new Option(t('noChange'), ''));
       for (const [c, n] of profileOf(m).inputs) sel.append(new Option(`${n} (${toHex(c)})`, c));
-      if (cur && !profileOf(m).inputs.some(([c]) => c === cur.value)) sel.append(new Option(`${toHex(cur.value)} (enregistrée)`, cur.value));
-      sel.append(new Option('Autre (code hexa)…', 'custom'));
+      if (cur && !profileOf(m).inputs.some(([c]) => c === cur.value)) sel.append(new Option(t('input.saved', { code: toHex(cur.value) }), cur.value));
+      sel.append(new Option(t('input.custom'), 'custom'));
       sel.value = cur ? String(cur.value) : '';
-      sel.title = `Codes adaptés à ce modèle (${m.model}) — ${profileOf(m).note}`;
+      sel.title = t('input.profile.title', { model: m.model, note: I18n.pick(profileOf(m).note) || '' });
     } else {
-      sel.append(new Option('Ne pas changer', ''));
+      sel.append(new Option(t('noChange'), ''));
       const announced = new Set(m.ddcInputs || []);
       const values = new Set(INPUTS.map(([c]) => c));
       for (const [c, n] of INPUTS) sel.append(new Option(n + (announced.has(c) ? ' ✓' : ''), c));
       for (const c of announced) if (!values.has(c)) sel.append(new Option(inputName(c, m) + ' ✓', c));
       if (cur && !values.has(cur.value) && !announced.has(cur.value)) sel.append(new Option(inputName(cur.value, m), cur.value));
-      sel.append(new Option('Autre (code hexa)…', 'custom'));
+      sel.append(new Option(t('input.custom'), 'custom'));
       sel.value = cur ? String(cur.value) : '';
-      sel.title = '✓ = annoncée par l\'écran (la liste de l\'écran est souvent incomplète)';
+      sel.title = t('input.announced.title');
     }
     const hex = document.createElement('input');
     hex.className = 'hex hidden'; hex.placeholder = '0x12';
-    // « Tester » : envoie le code tout de suite pour trouver les bons codes d'un écran
+    // "Test": sends the code right away, to find a monitor's right codes
     const test = document.createElement('button');
-    test.className = 'btn ghost small'; test.innerHTML = uiIcon('zap') + 'Tester';
-    test.title = 'Envoie ce code à l\'écran maintenant (pour vérifier quelle source il sélectionne)';
+    test.className = 'btn ghost small'; test.innerHTML = uiIcon('zap');
+    test.append(t('btn.test'));
+    test.title = t('btn.test.title');
     const refreshTest = () => { test.disabled = !!m.inactive || !(draft.inputs || []).some((i) => i.hwId === m.hwId); };
     test.onclick = async () => {
       const i = (draft.inputs || []).find((x) => x.hwId === m.hwId);
       if (!i) return;
       test.disabled = true;
-      try { await window.api.testInput({ hwId: m.hwId, device: m.device, devicePath: m.devicePath }, i.value); toast(`${toHex(i.value)} envoyé à ${monName(m)}`); }
+      try { await window.api.testInput({ hwId: m.hwId, device: m.device, devicePath: m.devicePath }, i.value); toast(t('test.sent', { code: toHex(i.value), name: monName(m) })); }
       catch (e) { toast(e.message.replace(/^Error invoking remote method '[\w-]+': (Error: )?/, ''), true); }
       finally { test.disabled = false; }
     };
@@ -309,13 +321,13 @@ function renderMonitors() {
     };
     hex.onchange = () => {
       const v = parseInt(hex.value.replace(/^0x/i, ''), 16);
-      if (Number.isFinite(v) && v > 0 && v < 256) { setInput(m, v); test.disabled = false; } else toast('Code invalide (ex. 0x12)', true);
+      if (Number.isFinite(v) && v > 0 && v < 256) { setInput(m, v); test.disabled = false; } else toast(t('input.invalid'), true);
     };
     refreshTest();
-    // assistant : vérifie les codes standard / cherche ceux de ce modèle
+    // wizard: checks the standard codes / searches this model's codes
     const wiz = document.createElement('button');
     wiz.className = 'btn ghost small icon-only'; wiz.innerHTML = uiIcon('wand');
-    wiz.title = 'Assistant : vérifier ou trouver les codes des entrées de cet écran';
+    wiz.title = t('btn.wizard.title');
     wiz.disabled = !!m.inactive;
     wiz.onclick = () => Wizard.open(m);
     cell.append(sel, hex, test, wiz);
@@ -336,13 +348,13 @@ function setInput(m, value) {
 function renderAudio() {
   const sel = $('#f-audio');
   sel.innerHTML = '';
-  sel.append(new Option('Ne pas changer', ''));
-  for (const a of hw.audio) sel.append(new Option(a.name + (a.isDefault ? '  (actuelle)' : ''), a.id));
-  if (draft.audio && !hw.audio.some((a) => a.id === draft.audio.id)) sel.append(new Option(`${draft.audio.name} (non branchée)`, draft.audio.id));
+  sel.append(new Option(t('noChange'), ''));
+  for (const a of hw.audio) sel.append(new Option(a.name + (a.isDefault ? t('audio.current') : ''), a.id));
+  if (draft.audio && !hw.audio.some((a) => a.id === draft.audio.id)) sel.append(new Option(t('audio.unplugged', { name: draft.audio.name }), draft.audio.id));
   sel.value = draft.audio ? draft.audio.id : '';
 }
 
-// ------------------------------------------------------------ capture du raccourci
+// ------------------------------------------------------------ shortcut capture
 function keyFromCode(e) {
   const c = e.code;
   let m;
@@ -368,33 +380,33 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault(); e.stopPropagation();
   if (e.code === 'Escape') { stopCapture(); return; }
   const key = keyFromCode(e);
-  if (!key) return;                                   // touche de modification seule
+  if (!key) return;                                   // modifier key alone
   const mods = [];
   if (e.ctrlKey) mods.push('Control');
   if (e.altKey) mods.push('Alt');
   if (e.shiftKey) mods.push('Shift');
   if (e.metaKey) mods.push('Super');
-  if (!mods.length && !/^F\d+$/.test(key)) { toast('Ajoutez Ctrl, Alt, Maj ou Win (sauf pour les touches F1–F24)', true); return; }
+  if (!mods.length && !/^F\d+$/.test(key)) { toast(t('shortcut.needMod'), true); return; }
   draft.shortcut = [...mods, key].join('+');
   stopCapture();
 }, true);
 
 // ------------------------------------------------------------ actions
 async function saveDraft() {
-  draft.name = $('#f-name').value.trim() || 'Sans nom';
+  draft.name = $('#f-name').value.trim() || t('untitled');
   const aid = $('#f-audio').value;
   draft.audio = aid ? { id: aid, name: (hw.audio.find((a) => a.id === aid) || draft.audio || {}).name } : null;
   const scenes = state.scenes.map((s) => (s.id === draft.id ? clone(draft) : s));
   if (!scenes.some((s) => s.id === draft.id)) scenes.push(clone(draft));
   state = await window.api.save({ scenes });
   const st = state.shortcutStatus[draft.id];
-  if (st && st !== 'ok') toast(`Scène enregistrée, mais raccourci inactif : ${STATUS_TEXT[st][0].toLowerCase()}`, true);
-  else toast('Scène enregistrée');
+  if (st && st !== 'ok') toast(t('saved.inactive', { reason: statusText(st)[0].toLowerCase() }), true);
+  else toast(t('saved'));
   render();
 }
 
 async function applySaved(id) {
-  try { await window.api.apply(id); toast('Scène appliquée'); }
+  try { await window.api.apply(id); toast(t('applied')); }
   catch (e) { toast(e.message.replace(/^Error invoking remote method '\w+': (Error: )?/, ''), true); }
   state = await window.api.state();
   hw = await window.api.hardware().catch(() => hw);
@@ -402,7 +414,7 @@ async function applySaved(id) {
 }
 
 $('#btn-new').onclick = () => {
-  draft = { id: uid(), name: 'Nouvelle scène', shortcut: '', inputs: [], primary: null, audio: null, displays: [] };
+  draft = { id: uid(), name: t('new.scene'), shortcut: '', inputs: [], primary: null, audio: null, displays: [] };
   selId = draft.id;
   render();
   $('#f-name').select();
@@ -412,7 +424,7 @@ $('#btn-copy-url').onclick = () => copyLaunch('url');
 $('#btn-copy-cmd').onclick = () => copyLaunch('cmd');
 $('#btn-apply').onclick = async () => { await saveDraft(); await applySaved(draft.id); };
 $('#btn-delete').onclick = async () => {
-  if (!confirm(`Supprimer la scène « ${draft.name} » ?`)) return;
+  if (!confirm(t('confirm.delete', { name: draft.name }))) return;
   const scenes = state.scenes.filter((s) => s.id !== draft.id);
   state = await window.api.save({ scenes });
   select(null);
@@ -433,9 +445,29 @@ $('#btn-refresh').onclick = async () => {
 };
 $('#opt-autostart').onchange = async (e) => { state.autostart = await window.api.autostart(e.target.checked); render(); };
 $('#opt-notify').onchange = async (e) => { state = await window.api.save({ settings: { notify: e.target.checked } }); };
+// settings: modal window (language, autostart, notifications)
+function openSettings() {
+  const sel = $('#opt-lang');
+  sel.innerHTML = '';
+  sel.append(new Option(t('settings.system', { name: I18n.LANG_NAMES[state.systemLang] }), 'system'));
+  for (const [k, v] of Object.entries(I18n.LANG_NAMES)) sel.append(new Option(v, k));
+  sel.value = state.settings.language || 'system';
+  $('#settings').classList.remove('hidden');
+}
+const closeSettings = () => $('#settings').classList.add('hidden');
+$('#btn-settings').onclick = openSettings;
+$('#settings-close').onclick = closeSettings;
+$('#settings').onclick = (e) => { if (e.target.id === 'settings') closeSettings(); };
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#settings').classList.contains('hidden')) closeSettings(); });
+// language change: the main process switches (menu, notifications), the UI reloads
+$('#opt-lang').onchange = async (e) => {
+  state = await window.api.save({ settings: { language: e.target.value } });
+  try { sessionStorage.setItem('reopenSettings', '1'); } catch { /* no storage: the window stays closed */ }
+  location.reload();
+};
 window.addEventListener('resize', () => draft && renderLayout());
 window.api.onState((s) => { state = s; render(); });
-// détection rapide envoyée après chaque scène (sans les infos DDC, coûteuses) : on garde celles qu'on avait
+// quick detection sent after each scene (without the costly DDC info): keep the DDC info we had
 window.api.onHardware((h) => {
   if (!h) return;
   const prev = Object.fromEntries(hw.monitors.map((m) => [m.hwId, m]));
@@ -447,12 +479,18 @@ window.api.onHardware((h) => {
 });
 
 // ------------------------------------------------------------ init
-applyUiIcons();
 (async () => {
   state = await window.api.state();
+  I18n.setLang(state.lang);
+  document.documentElement.lang = state.lang;
+  applyI18n();     // before the icons: textContent replaces the content
+  applyUiIcons();
+  let reopen = false;
+  try { reopen = sessionStorage.getItem('reopenSettings') === '1'; sessionStorage.removeItem('reopenSettings'); } catch { /* ignored */ }
+  if (reopen) openSettings();
   selId = state.scenes[0] ? state.scenes[0].id : null;
   draft = selId ? clone(state.scenes[0]) : null;
   render();
-  try { hw = await window.api.hardware(); } catch (e) { toast('Détection impossible : ' + e.message, true); }
+  try { hw = await window.api.hardware(); } catch (e) { toast(t('detect.failed', { msg: e.message }), true); }
   render();
 })();

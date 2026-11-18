@@ -1,5 +1,5 @@
-// Interop Windows : écrans (CCD), audio (IPolicyConfig) et DDC/CI (dxva2).
-// Compilé à la volée par helper.ps1 (Add-Type), aucune dépendance externe.
+// Windows interop: displays (CCD), audio (IPolicyConfig) and DDC/CI (dxva2).
+// Compiled on the fly by helper.ps1 (Add-Type), no external dependency.
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -69,7 +69,7 @@ namespace ScreenSwitcher {
     }
   }
 
-  // ======================= Écrans =======================
+  // ======================= Displays =======================
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   public struct DEVMODE {
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
@@ -116,7 +116,7 @@ namespace ScreenSwitcher {
     [DllImport("dxva2.dll")] static extern bool GetCapabilitiesStringLength(IntPtr h, out uint len);
     [DllImport("dxva2.dll", CharSet = CharSet.Ansi)] static extern bool CapabilitiesRequestAndCapabilitiesReply(IntPtr h, StringBuilder s, uint len);
 
-    // Exécute fn(handle physique) pour l'écran GDI donné (\\.\DISPLAYn)
+    // Runs fn(physical handle) for the given GDI display (\\.\DISPLAYn)
     static bool WithPhysical(string device, Action<IntPtr> fn) {
       bool found = false;
       EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (hm, a, b, c) => {
@@ -150,17 +150,31 @@ namespace ScreenSwitcher {
       for (int i = 0; ; i++) {
         var dd = new DISPLAY_DEVICE(); dd.cb = Marshal.SizeOf(dd);
         if (!EnumDisplayDevices(null, i, ref dd, 0)) break;
-        if ((dd.StateFlags & 1) == 0) continue;                       // non attaché au bureau
-        var mon = new DISPLAY_DEVICE(); mon.cb = Marshal.SizeOf(mon);
-        bool ok = EnumDisplayDevices(dd.DeviceName, 0, ref mon, 0);
+        if ((dd.StateFlags & 1) == 0) continue;                       // not attached to the desktop
+        // Monitor on this output: Windows keeps former monitors of the output in the list (e.g. a
+        // disabled projector), sometimes first. Take the active one whose model matches the output's
+        // CCD path (\\?\DISPLAY#ACR080E#…); else the first active one, else the first one.
+        string path = gdiToPath.ContainsKey(dd.DeviceName) ? gdiToPath[dd.DeviceName] : null;
+        string pathModel = null;
+        if (path != null) { var pp = path.Split('#'); if (pp.Length > 1) pathModel = pp[1]; }
+        string hw = "", first = null, firstActive = null;
+        for (int j = 0; ; j++) {
+          var mon = new DISPLAY_DEVICE(); mon.cb = Marshal.SizeOf(mon);
+          if (!EnumDisplayDevices(dd.DeviceName, j, ref mon, 0)) break;
+          var mp = mon.DeviceID.Split('\\');
+          bool active = (mon.StateFlags & 1) != 0;
+          if (first == null) first = mon.DeviceID;
+          if (active && firstActive == null) firstActive = mon.DeviceID;
+          if (active && pathModel != null && mp.Length > 1 && string.Equals(mp[1], pathModel, StringComparison.OrdinalIgnoreCase)) { hw = mon.DeviceID; break; }
+        }
+        if (hw == "") hw = firstActive ?? first ?? "";
         var dm = new DEVMODE(); dm.dmSize = (short)Marshal.SizeOf(dm);
         EnumDisplaySettings(dd.DeviceName, -1, ref dm);
-        string hw = ok ? mon.DeviceID : "";
         string model = "";
         var parts = hw.Split('\\'); if (parts.Length > 1) model = parts[1];
         var m = new MonitorInfo {
           device = dd.DeviceName, hwId = hw, model = model, primary = (dd.StateFlags & 4) != 0,
-          devicePath = gdiToPath.ContainsKey(dd.DeviceName) ? gdiToPath[dd.DeviceName] : null,
+          devicePath = path,
           x = dm.dmPositionX, y = dm.dmPositionY, width = dm.dmPelsWidth, height = dm.dmPelsHeight, hz = dm.dmDisplayFrequency,
           ddcInputs = new int[0], ddcCaps = "", currentInput = -1
         };
@@ -180,7 +194,7 @@ namespace ScreenSwitcher {
       return r;
     }
 
-    // Source annoncée par l'écran (VCP 0x60), -1 si pas de réponse. Quelques essais : le bus DDC est lent.
+    // Input reported by the monitor (VCP 0x60), -1 if no answer. A few attempts: the DDC bus is slow.
     public static int GetInput(string device) {
       int r = -1;
       WithPhysical(device, h => {
@@ -197,12 +211,12 @@ namespace ScreenSwitcher {
       bool found = WithPhysical(device, h => {
         for (int t = 0; t < 4 && !done; t++) { done = SetVCPFeature(h, 0x60, (uint)value); if (!done) Thread.Sleep(250); }
       });
-      if (!found) throw new Exception("Écran introuvable pour DDC : " + device);
-      if (!done) throw new Exception("L'écran " + device + " a refusé la commande DDC");
+      if (!found) throw new Exception("Display not found for DDC: " + device);
+      if (!done) throw new Exception("Display " + device + " rejected the DDC command");
     }
 
     // ======================= API CCD (QueryDisplayConfig / SetDisplayConfig) =======================
-    // DISPLAYCONFIG_PATH_INFO (72 octets) : source (adaptateur, id, mode) puis cible (adaptateur, id, mode, ..., disponible)
+    // DISPLAYCONFIG_PATH_INFO (72 bytes): source (adapter, id, mode) then target (adapter, id, mode, ..., available)
     [StructLayout(LayoutKind.Explicit, Size = 72)] struct PATH {
       [FieldOffset(0)] public uint srcAdapterLow; [FieldOffset(4)] public int srcAdapterHigh;
       [FieldOffset(8)] public uint srcId; [FieldOffset(12)] public uint srcModeIdx;
@@ -257,7 +271,7 @@ namespace ScreenSwitcher {
     }
     static bool SameTarget(PATH a, PATH b) { return a.tgtAdapterLow == b.tgtAdapterLow && a.tgtAdapterHigh == b.tgtAdapterHigh && a.tgtId == b.tgtId; }
 
-    // Tous les écrans branchés, actifs ou désactivés. devicePath (\\?\DISPLAY#BNQ4D03#...) est l'identifiant stable.
+    // All connected displays, active or disabled. devicePath (\\?\DISPLAY#BNQ4D03#...) is the stable identifier.
     public static List<TargetInfo> ListTargets() {
       PATH[] paths; MODE[] modes; Query(QDC_ALL_PATHS, out paths, out modes);
       var r = new List<TargetInfo>(); var seen = new List<PATH>();
@@ -284,14 +298,14 @@ namespace ScreenSwitcher {
       try { Marshal.Copy(b, offset, p, n); return (T)Marshal.PtrToStructure(p, typeof(T)); } finally { Marshal.FreeHGlobal(p); }
     }
 
-    // Active ou désactive un écran (mode étendu).
-    // Retour : null si déjà dans l'état demandé ; à la désactivation, le chemin + modes exacts (base64)
-    // à repasser dans « saved » à la réactivation pour retrouver résolution, fréquence (ex. 59,94 Hz) et position.
+    // Enables or disables a display (extended mode).
+    // Returns null if already in the requested state; when disabling, the exact path + modes (base64)
+    // to pass back as "saved" when re-enabling, to restore resolution, refresh rate (e.g. 59.94 Hz) and position.
     public static string SetEnabled(string devicePath, bool on, string saved) {
       PATH[] all; MODE[] modes; Query(QDC_ALL_PATHS, out all, out modes);
       var candidates = new List<PATH>();
       foreach (var p in all) if (p.targetAvailable != 0 && string.Equals(TargetName(p).path, devicePath, StringComparison.OrdinalIgnoreCase)) candidates.Add(p);
-      if (candidates.Count == 0) throw new Exception("Écran non branché ou introuvable");
+      if (candidates.Count == 0) throw new Exception("Display not connected or not found");
       var active = new List<PATH>(); foreach (var p in all) if ((p.flags & PATH_ACTIVE) != 0) active.Add(p);
       bool isOn = active.Exists(a => SameTarget(a, candidates[0]));
       if (isOn == on) return null;
@@ -299,7 +313,7 @@ namespace ScreenSwitcher {
       if (!on) {
         var cur = active.Find(a => SameTarget(a, candidates[0]));
         var rest = active.FindAll(a => !SameTarget(a, candidates[0]));
-        if (rest.Count == 0) throw new Exception("Impossible de désactiver le dernier écran actif");
+        if (rest.Count == 0) throw new Exception("Cannot disable the last active display");
         string blob = "";
         if (cur.srcModeIdx < modes.Length && cur.tgtModeIdx < modes.Length) {
           var b = new List<byte>(ToBytes(cur)); b.AddRange(ToBytes(modes[cur.srcModeIdx])); b.AddRange(ToBytes(modes[cur.tgtModeIdx]));
@@ -308,7 +322,7 @@ namespace ScreenSwitcher {
         Apply(rest.ToArray(), modes);
         return blob;
       }
-      // 1) réactivation avec le chemin et les modes mémorisés (si la source est libre)
+      // 1) re-enable with the stored path and modes (if the source is free)
       if (!string.IsNullOrEmpty(saved)) {
         try {
           var b = Convert.FromBase64String(saved);
@@ -323,14 +337,14 @@ namespace ScreenSwitcher {
           }
         } catch { }
       }
-      // 2) sinon un chemin vers cet écran dont la source n'est pas déjà utilisée sur le même adaptateur
+      // 2) otherwise a path to this display whose source isn't already used on the same adapter
       foreach (var c in candidates) {
         if (active.Exists(a => a.srcAdapterLow == c.srcAdapterLow && a.srcAdapterHigh == c.srcAdapterHigh && a.srcId == c.srcId)) continue;
         var p = c; p.flags |= PATH_ACTIVE; p.srcModeIdx = MODE_IDX_INVALID; p.tgtModeIdx = MODE_IDX_INVALID;
         var list = new List<PATH>(active); list.Add(p);
         try { Apply(list.ToArray(), modes); return ""; } catch { }
       }
-      // 3) repli : mode « Étendre » de Windows (réactive tous les écrans branchés, positions de la base Windows)
+      // 3) fallback: Windows "Extend" mode (re-enables all connected displays, positions from the Windows database)
       int rc = SetDisplayConfig(0, null, 0, null, SDC_APPLY | SDC_TOPOLOGY_EXTEND);
       if (rc != 0) throw new Exception("Activation impossible (SetDisplayConfig = " + rc + ")");
       return "";
@@ -341,10 +355,10 @@ namespace ScreenSwitcher {
       return null;
     }
 
-    // ---- Écran principal : la source en (0,0) devient principale ----
+    // ---- Primary display: the source at (0,0) becomes primary ----
     public static void SetPrimary(string target) {
       var dmT = new DEVMODE(); dmT.dmSize = (short)Marshal.SizeOf(dmT);
-      if (!EnumDisplaySettings(target, -1, ref dmT)) throw new Exception("Écran introuvable : " + target);
+      if (!EnumDisplaySettings(target, -1, ref dmT)) throw new Exception("Display not found: " + target);
       int ox = dmT.dmPositionX, oy = dmT.dmPositionY;
       if (ox == 0 && oy == 0) return;
       PATH[] paths; MODE[] modes; Query(QDC_ONLY_ACTIVE_PATHS, out paths, out modes);

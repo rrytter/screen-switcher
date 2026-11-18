@@ -1,43 +1,46 @@
 <!doctype html>
-<html lang="fr">
+<html>
 	<head>
 		<meta charset="utf-8" />
-		<title>Scène Screen Switcher</title>
+		<title>Screen Switcher</title>
 		<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
 	</head>
 	<body>
-		<sdpi-item label="Scène">
-			<sdpi-select setting="sceneId" datasource="getScenes" hot-reload loading="Lecture des scènes…" placeholder="Choisir une scène"></sdpi-select>
-		</sdpi-item>
-		<sdpi-item label="Icône">
-			<sdpi-select setting="icon" default="auto">
-				<option value="auto">Comme dans Screen Switcher</option>
-				<option value="monitor">Écran</option>
-				<option value="dual">Deux écrans</option>
-				<option value="monitor-laptop">Écran + laptop</option>
-				<option value="laptop">Laptop</option>
-				<option value="projector">Projecteur</option>
-				<option value="tv">Télé</option>
-				<option value="gamepad">Console</option>
-				<option value="headphones">Casque</option>
-				<option value="moon">Nuit</option>
-			</sdpi-select>
-		</sdpi-item>
-		<sdpi-item label="Couleur">
-			<sdpi-select setting="color" default="auto">
-				<option value="auto">Comme dans Screen Switcher</option>
-				<option value="blue">Bleu</option>
-				<option value="teal">Vert d'eau</option>
-				<option value="green">Vert</option>
-				<option value="amber">Orange</option>
-				<option value="red">Rouge</option>
-				<option value="pink">Rose</option>
-				<option value="violet">Violet</option>
-				<option value="slate">Gris</option>
-			</sdpi-select>
-		</sdpi-item>
-		<sdpi-item label="Scène active">
-			<sdpi-checkbox setting="highlight" default="true" label="Assombrir les scènes inactives"></sdpi-checkbox>
-		</sdpi-item>
+		<script>
+			// Texts in the system language (French if fr-*, English otherwise). The markup is written
+			// before the sdpi components read their attributes.
+			const fr = /^fr\b/i.test(navigator.language || "");
+			const L = fr
+				? {
+						scene: "Scène", loading: "Lecture des scènes…", choose: "Choisir une scène",
+						icon: "Icône", color: "Couleur", same: "Comme dans Screen Switcher",
+						active: "Scène active", dim: "Assombrir les scènes inactives",
+						glyphs: ["Écran", "Deux écrans", "Écran + laptop", "Laptop", "Projecteur", "Télé", "Console", "Casque", "Nuit"],
+						colors: ["Bleu", "Vert d'eau", "Vert", "Orange", "Rouge", "Rose", "Violet", "Gris"],
+					}
+				: {
+						scene: "Scene", loading: "Loading scenes…", choose: "Choose a scene",
+						icon: "Icon", color: "Color", same: "Same as Screen Switcher",
+						active: "Active scene", dim: "Dim inactive scenes",
+						glyphs: ["Display", "Two displays", "Display + laptop", "Laptop", "Projector", "TV", "Console", "Headphones", "Night"],
+						colors: ["Blue", "Teal", "Green", "Orange", "Red", "Pink", "Purple", "Gray"],
+					};
+			const GLYPHS = ["monitor", "dual", "monitor-laptop", "laptop", "projector", "tv", "gamepad", "headphones", "moon"];
+			const COLORS = ["blue", "teal", "green", "amber", "red", "pink", "violet", "slate"];
+			const opts = (keys, labels) => keys.map((k, i) => `<option value="${k}">${labels[i]}</option>`).join("");
+			document.write(`
+				<sdpi-item label="${L.scene}">
+					<sdpi-select setting="sceneId" datasource="getScenes" hot-reload loading="${L.loading}" placeholder="${L.choose}"></sdpi-select>
+				</sdpi-item>
+				<sdpi-item label="${L.icon}">
+					<sdpi-select setting="icon" default="auto"><option value="auto">${L.same}</option>${opts(GLYPHS, L.glyphs)}</sdpi-select>
+				</sdpi-item>
+				<sdpi-item label="${L.color}">
+					<sdpi-select setting="color" default="auto"><option value="auto">${L.same}</option>${opts(COLORS, L.colors)}</sdpi-select>
+				</sdpi-item>
+				<sdpi-item label="${L.active}">
+					<sdpi-checkbox setting="highlight" default="true" label="${L.dim}"></sdpi-checkbox>
+				</sdpi-item>`);
+		</script>
 	</body>
 </html>

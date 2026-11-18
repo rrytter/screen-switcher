@@ -4,21 +4,24 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 const { Native } = require('./native');
 const { expectedRead } = require('./profiles');
+const I18n = require('./i18n');
+const t = I18n.t;
 
 const ROOT = path.join(__dirname, '..');
-// app packagée : le code est dans app.asar, mais PowerShell et Windows (icône .ico) ont besoin de vrais fichiers
-// → native/ et assets/ sont extraits dans app.asar.unpacked (voir « asarUnpack » dans package.json)
+// packaged app: code lives in app.asar, but PowerShell and Windows (.ico icon) need real files
+// → native/ and assets/ are extracted to app.asar.unpacked (see "asarUnpack" in package.json)
 const UNPACKED = ROOT.replace(/app\.asar(?=[\\/]|$)/, 'app.asar.unpacked');
 const native = new Native(path.join(UNPACKED, 'native'));
-// dossier de config fixe (%APPDATA%\screen-switcher), quel que soit le productName : dev et version installée partagent les scènes
-app.setPath('userData', path.join(app.getPath('appData'), 'screen-switcher'));
+// fixed config folder (%APPDATA%\screen-switcher) whatever the productName: dev and installed builds share scenes
+// SS_USER_DATA (dev): separate data folder → test instance independent from the installed app
+app.setPath('userData', process.env.SS_USER_DATA || path.join(app.getPath('appData'), 'screen-switcher'));
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
 
 let win = null;
 let tray = null;
 let config = { scenes: [], monitorNames: {}, settings: { notify: true }, lastSceneId: null };
 let shortcutStatus = {};   // sceneId -> 'ok' | 'conflict' | 'invalid'
-let hardware = null;       // dernier résultat de native.list()
+let hardware = null;       // last result of native.list()
 let applying = false;
 
 // ---------------------------------------------------------------- config
@@ -35,7 +38,7 @@ function saveConfig() {
 }
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-// Scènes par défaut construites à partir du matériel détecté au 1er lancement
+// Default scenes built from the hardware detected on first launch
 function seedScenes(hw) {
   const acers = hw.monitors.filter((m) => m.model.startsWith('ACR')).sort((a, b) => a.x - b.x);
   const pj = hw.monitors.find((m) => m.model.startsWith('BNQ'));
@@ -43,19 +46,19 @@ function seedScenes(hw) {
   const scenes = [];
   if (acers.length >= 2) {
     const [L, R] = acers;
-    config.monitorNames[L.hwId] = 'Acer gauche';
-    config.monitorNames[R.hwId] = 'Acer droit';
+    config.monitorNames[L.hwId] = t('seed.leftAcer');
+    config.monitorNames[R.hwId] = t('seed.rightAcer');
     const inp = (m, v) => ({ hwId: m.hwId, device: m.device, value: v });
-    // Acer ED270U P : codes non standard — 0x11 = DisplayPort, 0x0F = port HDMI 2 (voir MODEL_PROFILES)
+    // Acer ED270U P: non-standard codes — 0x11 = DisplayPort, 0x0F = HDMI 2 port (see MODEL_PROFILES)
     scenes.push({ id: uid(), name: 'PC', shortcut: 'Control+Alt+F1', inputs: [inp(L, 0x11), inp(R, 0x11)] });
     scenes.push({ id: uid(), name: 'Laptop', shortcut: 'Control+Alt+F2', inputs: [inp(L, 0x0f), inp(R, 0x0f)] });
   }
   if (pj && acers.length) {
-    config.monitorNames[pj.hwId] = 'Projecteur BenQ';
+    config.monitorNames[pj.hwId] = t('seed.benq');
     const pjDisplay = (enabled) => (pj.devicePath ? [{ devicePath: pj.devicePath, name: pj.name, enabled }] : []);
-    const bureau = { id: uid(), name: 'Bureau', shortcut: 'Control+Alt+B', inputs: [], displays: pjDisplay(false),
-      primary: { hwId: acers[0].hwId, device: acers[0].device }, audio: hw.audio.find((a) => a.isDefault && !a.name.includes('BenQ')) || audio('Haut-parleurs') || null };
-    const proj = { id: uid(), name: 'Projecteur', shortcut: 'Control+Alt+P', inputs: [], displays: pjDisplay(true),
+    const bureau = { id: uid(), name: t('seed.desk'), shortcut: 'Control+Alt+B', inputs: [], displays: pjDisplay(false),
+      primary: { hwId: acers[0].hwId, device: acers[0].device }, audio: hw.audio.find((a) => a.isDefault && !a.name.includes('BenQ')) || audio('Haut-parleurs') || audio('Speakers') || null };
+    const proj = { id: uid(), name: t('seed.projector'), shortcut: 'Control+Alt+P', inputs: [], displays: pjDisplay(true),
       primary: { hwId: pj.hwId, device: pj.device }, audio: audio('BenQ') || null };
     if (proj.audio) proj.audio = { id: proj.audio.id, name: proj.audio.name };
     if (bureau.audio) bureau.audio = { id: bureau.audio.id, name: bureau.audio.name };
@@ -64,9 +67,9 @@ function seedScenes(hw) {
   config.scenes = scenes;
 }
 
-// ---------------------------------------------------------------- scènes
-// Les écrans sont mémorisés par ID matériel (hwId) et/ou devicePath (\\?\DISPLAY#BNQ4D03#…).
-// Un écran désactivé n'a plus de \\.\DISPLAYn : le helper le retrouve par devicePath après activation.
+// ---------------------------------------------------------------- scenes
+// Displays are stored by hardware ID (hwId) and/or devicePath (\\?\DISPLAY#BNQ4D03#…).
+// A disabled display has no \\.\DISPLAYn: the helper finds it by devicePath after enabling it.
 function setHardware(hw) {
   hardware = hw;
   config.devicePaths = config.devicePaths || {};
@@ -86,14 +89,14 @@ function resolveRef(ref) {
 
 async function applyScene(id) {
   const scene = config.scenes.find((s) => s.id === id);
-  if (!scene) throw new Error('Scène introuvable');
+  if (!scene) throw new Error(t('main.sceneNotFound'));
   if (applying) return;
   applying = true;
   try {
     if (!hardware) setHardware(await native.list(false));
-    // On ne saute une source que si l'écran annonce déjà la bonne ET que la dernière commande
-    // envoyée par l'app à cet écran était la même : juste après une bascule, l'Acer annonce
-    // parfois une valeur périmée, donc la lecture seule ne suffit pas.
+    // An input is skipped only if the monitor already reports it AND the last command the app
+    // sent to this monitor was the same: right after a switch the Acer sometimes reports a stale
+    // value, so reading alone is not enough.
     const lastInputs = config.lastInputs || {};
     const displayModes = config.displayModes || {};
     const targets = (scene.inputs || []).filter((i) => i.value != null);
@@ -101,7 +104,7 @@ async function applyScene(id) {
     const payload = {
       primary: resolveRef(scene.primary),
       audio: scene.audio ? scene.audio.id : null,
-      // saved = chemin + modes exacts mémorisés à la désactivation (résolution, fréquence, position)
+      // saved = exact path + modes stored when disabling (resolution, refresh rate, position)
       displays: displays.map((d) => ({ devicePath: d.devicePath, enabled: d.enabled, saved: d.enabled ? displayModes[d.devicePath] || null : null })),
       inputs: targets.map((i) => {
         const model = (i.hwId || '').split('\\')[1] || '';
@@ -115,7 +118,7 @@ async function applyScene(id) {
       for (const i of targets) lastInputs[i.hwId] = i.value;
       config.lastInputs = lastInputs;
     } catch (e) {
-      res = e.result;           // erreur partielle : on garde quand même les modes mémorisés
+      res = e.result;           // partial error: keep the stored modes anyway
       applyError = e;
     } finally {
       if (payload.primary || displays.length) setHardware(await native.list(false).catch(() => hardware));
@@ -130,11 +133,11 @@ async function applyScene(id) {
     config.lastSceneId = scene.id;
     saveConfig();
     refreshTray();
-    notify(`Scène « ${scene.name} »`, '');
+    notify(t('main.applied', { name: scene.name }), '');
     win?.webContents.send('state', publicState());
     win?.webContents.send('hardware', hardware);
   } catch (e) {
-    notify('Échec de la scène', e.message, true);
+    notify(t('main.failed'), e.message, true);
     throw e;
   } finally {
     applying = false;
@@ -169,17 +172,17 @@ function registerShortcuts() {
 const iconPath = (sz) => path.join(UNPACKED, 'assets', `icon-${sz}.png`);
 const ICO = path.join(UNPACKED, 'assets', 'icon.ico');
 const APP_ID = 'ScreenSwitcher.App';
-const LOGIN_NAME = 'Screen Switcher';           // nom de l'entrée « Run » du registre
-const OLD_LOGIN_NAME = 'local.screen-switcher'; // ancien nom (= ancien AppUserModelID)
+const LOGIN_NAME = 'Screen Switcher';           // name of the registry "Run" entry
+const OLD_LOGIN_NAME = 'local.screen-switcher'; // former name (= former AppUserModelID)
 
-// Windows prend l'icône (barre des tâches, notifications) du raccourci qui porte le même AppUserModelID.
-// Sans lui, lancé depuis le code source, on voit l'icône d'electron.exe. Créé/mis à jour à chaque lancement.
+// Windows takes the icon (taskbar, notifications) from the shortcut carrying the same AppUserModelID.
+// Without it, when run from source, electron.exe's icon shows. Created/updated on every launch.
 function ensureStartMenuShortcut() {
   if (process.platform !== 'win32') return;
   const lnk = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Screen Switcher.lnk');
   const opts = {
     target: process.execPath, args: app.isPackaged ? '' : `"${ROOT}"`, cwd: app.isPackaged ? path.dirname(process.execPath) : ROOT,
-    icon: ICO, iconIndex: 0, appUserModelId: APP_ID, description: 'Scènes d\'affichage et raccourcis',
+    icon: ICO, iconIndex: 0, appUserModelId: APP_ID, description: t('main.shortcutDesc'),
   };
   try {
     const cur = fs.existsSync(lnk) ? shell.readShortcutLink(lnk) : null;
@@ -201,10 +204,10 @@ function refreshTray() {
     click: () => applyScene(s.id).catch(() => {}),
   }));
   tray.setContextMenu(Menu.buildFromTemplate([
-    ...(sceneItems.length ? sceneItems : [{ label: 'Aucune scène', enabled: false }]),
+    ...(sceneItems.length ? sceneItems : [{ label: t('tray.none'), enabled: false }]),
     { type: 'separator' },
-    { label: 'Modifier les scènes…', click: showWindow },
-    { label: 'Quitter', click: () => { app.isQuitting = true; app.quit(); } },
+    { label: t('tray.edit'), click: showWindow },
+    { label: t('tray.quit'), click: () => { app.isQuitting = true; app.quit(); } },
   ]));
 }
 
@@ -215,7 +218,7 @@ function showWindow() {
     title: 'Screen Switcher', icon: ICO, autoHideMenuBar: true, backgroundColor: '#1e1e1e',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  // Sans ça, la barre des tâches affiche l'icône d'electron.exe (lancement depuis le code source)
+  // Without this, the taskbar shows electron.exe's icon (when run from source)
   win.setAppDetails({
     appId: APP_ID, appIconPath: ICO, appIconIndex: 0, relaunchDisplayName: 'Screen Switcher',
     relaunchCommand: app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${ROOT}"`,
@@ -229,8 +232,15 @@ function publicState() {
   return {
     scenes: config.scenes, monitorNames: config.monitorNames, settings: config.settings, devicePaths: config.devicePaths || {},
     lastSceneId: config.lastSceneId, shortcutStatus, inputProfiles: config.inputProfiles || {},
+    lang: I18n.getLang(), systemLang: I18n.detect(app.getLocale()),
     autostart: isAutostart(),
   };
+}
+
+// Language: "language" setting (system / en / fr); "system" = Windows language (English if unsupported)
+function applyLang() {
+  const l = config.settings && config.settings.language;
+  I18n.setLang(l && l !== 'system' ? l : I18n.detect(app.getLocale()));
 }
 
 // ---------------------------------------------------------------- IPC
@@ -241,16 +251,17 @@ ipcMain.handle('save', (_e, patch) => {
   if (patch.scenes) config.scenes = patch.scenes;
   if (patch.monitorNames) config.monitorNames = patch.monitorNames;
   if (patch.settings) config.settings = { ...config.settings, ...patch.settings };
+  if (patch.settings && 'language' in patch.settings) applyLang();
   if (config.lastSceneId && !config.scenes.some((s) => s.id === config.lastSceneId)) config.lastSceneId = null;
   saveConfig();
   registerShortcuts();
   refreshTray();
   return publicState();
 });
-// en mode développement, electron.exe doit recevoir le chemin du projet
+// in development, electron.exe must receive the project path
 const loginArgs = () => (app.isPackaged ? ['--hidden'] : [ROOT, '--hidden']);
-// Démarrage automatique : valeur dans HKCU\...\Run, gérée directement
-// (sous Windows, getLoginItemSettings d'Electron ne retrouve une entrée que par l'AppUserModelID)
+// Autostart: value under HKCU\...\Run, managed directly
+// (on Windows, Electron's getLoginItemSettings only finds an entry by AppUserModelID)
 const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const reg = (args) => execFileSync('reg', args, { windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 const loginCommand = () => [process.execPath, ...loginArgs()].map((a) => (a.startsWith('--') ? a : `"${a}"`)).join(' ');
@@ -261,20 +272,20 @@ function setAutostart(on) {
   else if (readRun(LOGIN_NAME)) reg(['delete', RUN_KEY, '/v', LOGIN_NAME, '/f']);
 }
 ipcMain.handle('autostart', (_e, on) => { setAutostart(!!on); return isAutostart(); });
-// migration de l'ancienne entrée (nommée d'après l'ancien AppUserModelID)
+// migrate the old entry (named after the old AppUserModelID)
 function migrateAutostart() {
   try {
     if (readRun(OLD_LOGIN_NAME)) { reg(['delete', RUN_KEY, '/v', OLD_LOGIN_NAME, '/f']); setAutostart(true); }
   } catch (e) { console.log('[autostart]', e.message); }
 }
-// pendant la capture d'un raccourci, on désactive les raccourcis globaux
+// while capturing a shortcut, global shortcuts are disabled
 ipcMain.handle('capture', (_e, on) => { on ? globalShortcut.unregisterAll() : registerShortcuts(); return publicState(); });
 
-// ---------------------------------------------------------------- lancement d'une scène de l'extérieur
-// Deux formes, pour un lanceur externe (pavé de touches programmables, raccourci, script…) :
-//   electron.exe <projet> --scene "PC"      (action « Ouvrir »)
-//   screenswitcher://scene/PC               (action « Site web » / lien)
-// Si l'app tourne déjà, l'instance lancée transmet ses arguments puis se ferme (second-instance).
+// ---------------------------------------------------------------- triggering a scene from outside
+// Two forms, for an external launcher (programmable keypad, shortcut, script…):
+//   electron.exe <project> --scene "PC"     ("Open" action)
+//   screenswitcher://scene/PC               ("Website" action / link)
+// If the app is already running, the new instance forwards its arguments and exits (second-instance).
 const PROTOCOL = 'screenswitcher';
 const normName = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
@@ -293,7 +304,7 @@ function sceneFromArgv(argv) {
 
 function applySceneByName(name) {
   const scene = config.scenes.find((s) => s.id === name) || config.scenes.find((s) => normName(s.name) === normName(name));
-  if (!scene) { notify('Scène introuvable', `Aucune scène « ${name} »`, true); return; }
+  if (!scene) { notify(t('main.sceneNotFound'), t('main.noScene', { name }), true); return; }
   applyScene(scene.id).catch(() => {});
 }
 
@@ -309,7 +320,7 @@ ipcMain.handle('scene-command', (_e, name) => ({
   url: `${PROTOCOL}://scene/${encodeURIComponent(name)}`,
 }));
 ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text)); return true; });
-// bouton « Tester » : la dernière valeur envoyée change, la prochaine scène ne devra pas sauter cet écran
+// "Test" button: the last sent value changes, so the next scene must not skip this monitor
 ipcMain.handle('test-input', async (_e, ref, value) => {
   await native.setInput(resolveRef(ref), value);
   config.lastInputs = { ...(config.lastInputs || {}), [ref.hwId]: value };
@@ -317,15 +328,15 @@ ipcMain.handle('test-input', async (_e, ref, value) => {
   return true;
 });
 
-// ---------------------------------------------------------------- assistant des sources
-// envoie un code, attend que l'écran bascule et renvoie la source lue (-1 si l'écran ne répond pas)
+// ---------------------------------------------------------------- input wizard
+// sends a code, waits for the monitor to switch and returns the input read back (-1 if no answer)
 ipcMain.handle('ddc-probe', async (_e, ref, value, waitMs = 2500) => {
   const r = await native.probe(resolveRef(ref), value, waitMs);
   config.lastInputs = { ...(config.lastInputs || {}), [ref.hwId]: value };
   saveConfig();
   return r;
 });
-// profil trouvé par l'assistant pour un modèle (null = revenir aux codes standard / intégrés)
+// profile found by the wizard for a model (null = back to standard / built-in codes)
 ipcMain.handle('save-input-profile', (_e, model, profile) => {
   const all = { ...(config.inputProfiles || {}) };
   if (profile) all[model] = profile; else delete all[model];
@@ -333,11 +344,11 @@ ipcMain.handle('save-input-profile', (_e, model, profile) => {
   saveConfig();
   return publicState();
 });
-// La fenêtre est-elle sur l'écran testé ? (rectangle en pixels physiques, comme les positions des écrans)
+// Is the window on the tested display? (rectangle in physical pixels, like display positions)
 const physRect = (r) => screen.dipToScreenRect(win, r);
 const overlap = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 ipcMain.handle('window-on-monitor', (_e, mon) => !!win && overlap(physRect(win.getBounds()), mon));
-// déplace la fenêtre sur un autre écran que celui testé
+// moves the window to a display other than the tested one
 ipcMain.handle('window-move-away', (_e, mon) => {
   if (!win) return false;
   const target = screen.getAllDisplays().find((d) => !overlap(screen.dipToScreenRect(null, d.bounds), mon));
@@ -349,7 +360,7 @@ ipcMain.handle('window-move-away', (_e, mon) => {
   return true;
 });
 
-// ---------------------------------------------------------------- démarrage
+// ---------------------------------------------------------------- startup
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -358,6 +369,8 @@ if (!app.requestSingleInstanceLock()) {
     if (name) applySceneByName(name); else showWindow();
   });
   app.whenReady().then(async () => {
+    // language: setting, else Windows language (French if fr-*), else English
+    applyLang();
     app.setAppUserModelId(APP_ID);
     ensureStartMenuShortcut();
     migrateAutostart();
@@ -365,11 +378,12 @@ if (!app.requestSingleInstanceLock()) {
     tray = new Tray(nativeImage.createFromPath(iconPath(32)));
     tray.on('click', showWindow);
     const hadConfig = loadConfig();
+    applyLang();
     try {
       setHardware(await native.list(false));
       if (!hadConfig) { seedScenes(hardware); saveConfig(); }
     } catch (e) {
-      notify('Screen Switcher', 'Helper natif indisponible : ' + e.message, true);
+      notify('Screen Switcher', t('main.helperFail', { msg: e.message }), true);
     }
     registerShortcuts();
     refreshTray();
@@ -377,6 +391,6 @@ if (!app.requestSingleInstanceLock()) {
     if (startScene) applySceneByName(startScene);
     else if (!process.argv.includes('--hidden')) showWindow();
   });
-  app.on('window-all-closed', () => { /* reste dans la zone de notification */ });
+  app.on('window-all-closed', () => { /* stay in the notification area */ });
   app.on('will-quit', () => { globalShortcut.unregisterAll(); native.stop(); });
 }

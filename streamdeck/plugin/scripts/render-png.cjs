@@ -1,5 +1,5 @@
-// Rend les SVG de assets/ en PNG 1x et @2x dans le dossier du plugin.
-// Lancer avec l'Electron du projet principal : npm run images
+// Renders the SVGs of assets/ to 1x and @2x PNGs in the plugin folder.
+// Run with the main project's Electron: npm run images
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..');
